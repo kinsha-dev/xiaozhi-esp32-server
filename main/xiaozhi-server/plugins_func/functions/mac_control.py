@@ -72,6 +72,11 @@ _RISKY = re.compile(
 
 _lock = threading.Lock()
 _pending = {}  # token -> {"kind", "args", "expires"}
+_handlers = {}  # kind -> fn(args) -> ActionResponse; lets other plugins reuse the spoken confirmation
+
+
+def register_pending_handler(kind, fn):
+    _handlers[kind] = fn
 
 
 def _now():
@@ -454,4 +459,6 @@ def confirm_action(conn, token):
             return _execute(a["action"], clean)
         except (OSError, subprocess.TimeoutExpired) as e:
             return ActionResponse(Action.RESPONSE, f"error: {e}", "That didn't work.")
+    if item["kind"] in _handlers:
+        return _handlers[item["kind"]](item["args"])
     return ActionResponse(Action.RESPONSE, "unknown pending", "Nothing to confirm.")

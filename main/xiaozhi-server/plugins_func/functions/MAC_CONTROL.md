@@ -23,3 +23,23 @@ Note: `lock_screen` uses `pmset displaysleepnow`, which locks only if "Require p
 off" is set to immediately in macOS settings.
 
 Tests: `PYTHONPATH=. python -m unittest tests.test_mac_control` from `main/xiaozhi-server`.
+
+## whatsapp_reader plugin (read-only WhatsApp)
+
+Module `whatsapp_reader.py`; tool `whatsapp_messages`. Enable by adding `whatsapp_messages` to
+`Intent.function_call.functions` in `data/.config.yaml` (alongside `confirm_action`).
+
+Source: the notifications WhatsApp Desktop already shows, read from the macOS notification database
+(`~/Library/Group Containers/group.com.apple.usernoted/db2/db`, opened read-only). No WhatsApp login, no network,
+no unofficial API. Needs: WhatsApp Desktop installed and signed in with notifications on, and **Full Disk Access**
+for the Python that runs the server (System Settings > Privacy & Security > Full Disk Access, add the real binary of
+`.venv/bin/python`, then restart the server). Only notifications that were shown are visible, so previews hidden
+in WhatsApp's notification settings read as empty.
+
+Flow: "any new WhatsApp messages?" -> the device says only how many are waiting and speaks a 4-digit code; on
+"confirm 4 8 2 1" it reads up to 5 messages as sender plus an 80-character preview and marks them read ("And N more"
+for the rest). Message text is never in the text returned to the LLM. Local buffer: `data/whatsapp_buffer.json`
+(mode 600, last 24 h, 50 messages). It cannot send, reply or delete. The notification-database layout is undocumented
+by Apple and may change between macOS versions; the plugin degrades to a spoken "can't read" message.
+
+Tests: `PYTHONPATH=. python -m unittest tests.test_whatsapp_reader`.
