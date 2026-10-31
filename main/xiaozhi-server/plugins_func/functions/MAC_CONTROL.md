@@ -82,3 +82,15 @@ Module `feature_builder.py`; tools `build_feature(request, project, followup=Fal
   job is reported as lost; the branch keeps whatever was done.
 
 Tests: `PYTHONPATH=. python -m unittest tests.test_feature_builder`.
+
+## Claude Code follow-up hook (post to the voice box)
+
+`scripts/claude_stop_voicebox.py` is a Claude Code `Stop` hook: when a session ends a turn it queues the last message
+(two plain-speech sentences, no code or paths) with `vibi say`, so the board speaks it now or on the next "Hi ESP".
+It only fires for sessions under `VIBI_HOOK_DIRS` (colon separated; default: Spx_Trading_Signal, voice-note-box,
+xiaozhi-server and the builds folder), skips hook loops, and always exits 0. Add to `~/.claude/settings.json`
+(or a project `.claude/settings.json`) under `hooks`:
+
+```json
+"Stop": [{"hooks": [{"type": "command", "command": "/usr/bin/python3 /Users/kinsha/esp/xiaozhi-server/main/xiaozhi-server/scripts/claude_stop_voicebox.py"}]}]
+```
