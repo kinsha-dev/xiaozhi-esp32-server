@@ -64,3 +64,21 @@ for the rest). Message text is never in the text returned to the LLM. Read flags
 by Apple and may change between macOS versions; the plugin degrades to a spoken "can't read" message.
 
 Tests: `PYTHONPATH=. python -m unittest tests.test_whatsapp_reader`.
+
+## feature_builder plugin (voice-started background builds)
+
+Module `feature_builder.py`; tools `build_feature(request, project, followup=False)` and
+`build_status(action)`. Enable by adding `build_feature` and `build_status` to `Intent.function_call.functions`.
+
+- "Ask Claude to build a timer command for the voice box" -> the device reads the request back (project, no push,
+  live code untouched) and waits for a spoken yes; `confirm_action` then starts the build.
+- The build runs the Claude CLI (read, bash, edit, write; `git push`, `git merge`, deletion, sudo and shells denied)
+  in a new git worktree `data/builds/<project>_<time>` on a new branch `voice/<time>-<slug>`. One build at a time,
+  30 min limit (`FEATURE_BUILD_TIMEOUT`). Only `server` and `voicebox` can be built, not `trading`.
+- Follow-ups: `build_status` -> "status" (still running?), "result" (what it built and the branch to review),
+  "cancel". `build_feature(followup=true)` continues the latest build's branch with further changes. When a build ends
+  it queues a spoken note through `voice-note-box/bin/vibi say` if that exists, so "any messages?" reports it.
+- Merging is manual: review the branch, then `git merge voice/...` yourself. If the server restarts mid-build the
+  job is reported as lost; the branch keeps whatever was done.
+
+Tests: `PYTHONPATH=. python -m unittest tests.test_feature_builder`.
