@@ -1,8 +1,8 @@
-"""Voice control of Claude Code and the Mac for the local XiaoZhi server.
+"""Voice control of the desk's pi agent and the Mac for the local XiaoZhi server.
 
-Tools: ask_claude, mac_control, confirm_action.
+Tools: ask_pi, mac_control, confirm_action.
 Safety model: fixed argument-list subprocess calls only (never a shell), an allowlist file for
-apps/shortcuts, read-only Claude by default, and a spoken one-time token for anything risky.
+apps/shortcuts, pi (read + bash, no deleting) by default, and a spoken one-time token for anything risky.
 The token is only given in the spoken reply (not in the text returned to the LLM), so the
 model cannot confirm on its own; the user has to say it back.
 """
@@ -24,14 +24,18 @@ logger = setup_logging()
 
 DATA_DIR = Path(os.environ.get("MAC_CONTROL_DATA_DIR", Path.home() / "esp/xiaozhi-local/data"))
 ALLOWLIST = DATA_DIR / "control_allowlist.json"
-TASKS_DIR = DATA_DIR / "claude_tasks"
+TASKS_DIR = DATA_DIR / "pi_tasks"
+# pi (the desk's sandboxed coding agent) replaces the Claude CLI. server/pi_ask.js wraps it: read+bash
+# tools, project-folder writes only, and the OS-level sandbox denies deleting project files.
+PI_CWD = os.environ.get("MAC_CONTROL_PI_CWD", "/Users/kinsha/Spx_Trading_Signal")
+PI_NODE = os.environ.get("MAC_CONTROL_NODE_BIN", "/opt/homebrew/opt/node@22/bin/node")
+PI_WRAPPER = os.environ.get("MAC_CONTROL_PI_WRAPPER", str(Path.home() / "esp/voice-note-box/server/pi_ask.js"))
+PI_TIMEOUT = 145  # just under the server's 150 s tool-call limit; pi_ask.js stops itself at 140 s
+PI_DAILY_CAP = int(os.environ.get("MAC_CONTROL_PI_DAILY_CAP", "20"))
+PI_RUNS = DATA_DIR / "pi_runs.json"
 CLAUDE_CWD = os.environ.get("MAC_CONTROL_CLAUDE_CWD", "/Users/kinsha/Spx_Trading_Signal")
 CLAUDE_BIN = os.environ.get("MAC_CONTROL_CLAUDE_BIN", "claude")
 CLAUDE_TIMEOUT = 120
-CONFIRM_TTL = 60
-MAX_TASK_CHARS = 1000
-DEFAULT_ALLOWLIST = {"apps": ["Safari", "Notes", "Calendar", "Music", "Spotify", "Terminal"], "shortcuts": []}
-
 # Bash is allowed (so Claude can run e.g. `node pipeline_status.js` for live status) but deletion is
 # denied. Deny rules beat allow rules in Claude Code. This is a guard against the obvious, not a
 # sandbox: scripting languages (node -e, python -c) or `mv` over a file can still destroy data.
@@ -46,11 +50,16 @@ WRITE_TOOLS = READ_TOOLS + ["Edit", "Write"]
 _NO_WEB = ["NotebookEdit", "WebFetch", "WebSearch"]
 DENY_READ = ["Edit", "Write"] + _NO_WEB + BASH_DENY
 DENY_WRITE = _NO_WEB + BASH_DENY
+CLAUDE_TASKS_DIR = DATA_DIR / "claude_tasks"
+CONFIRM_TTL = 60
+MAX_TASK_CHARS = 1000
+DEFAULT_ALLOWLIST = {"apps": ["Safari", "Notes", "Calendar", "Music", "Spotify", "Terminal"], "shortcuts": []}
+
 
 # Words suggesting the task wants to change files or run something.
 _RISKY = re.compile(
     r"\b(edit|change|modify|fix|write|create|add|update|rename|refactor|implement|delete|remove|"
-    r"run|execute|install|commit|push|deploy|restart|kill|move|overwrite|apply|patch|save)\b",
+    r"install|commit|push|deploy|restart|kill|move|overwrite|apply|patch|save)\b",
     re.I,
 )
 
@@ -101,10 +110,10 @@ def _create_pending(kind, args, prompt):
     return ActionResponse(Action.RESPONSE, f"Confirmation required for: {prompt} (token sent by voice only)", spoken)
 
 
-def _run(cmd, timeout=15, cwd=None):
+def _run(cmd, timeout=15, cwd=None, env=None):
     """Single choke point for subprocesses: list args only, never a shell."""
     assert isinstance(cmd, list) and all(isinstance(c, str) for c in cmd)
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, shell=False)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env, shell=False)
 
 
 def _shorten(text, limit=220):
@@ -130,16 +139,102 @@ def _two_sentences(text):
 
 
 # ---------------------------------------------------------------------------------------------
-# Claude
+# pi (the desk's coding agent)
 # ---------------------------------------------------------------------------------------------
 # The first two sentences of the answer are read aloud, so they must work as speech.
 SPOKEN_STYLE = (
     "Your answer is read aloud by a voice assistant. Begin with a plain-speech summary of at most two short "
     "sentences that states the result directly: no code, backticks, markdown, file names, paths or commands, "
-    "and do not start by explaining your tools or limits. Put the detail after that summary."
+    "and do not start by explaining your tools or limits. Put the detail after that summary. "
+    "If you need live data you may run read-only shell commands; you cannot delete files."
 )
 
 
+def _pi_runs_today():
+    try:
+        d = json.loads(PI_RUNS.read_text())
+    except (OSError, ValueError):
+        d = {}
+    return d if d.get("day") == datetime.now().strftime("%Y-%m-%d") else {"day": datetime.now().strftime("%Y-%m-%d"), "count": 0}
+
+
+def _count_pi_run():
+    d = _pi_runs_today()
+    d["count"] += 1
+    PI_RUNS.parent.mkdir(parents=True, exist_ok=True)
+    PI_RUNS.write_text(json.dumps(d))
+
+
+def _run_pi(task, write=False):
+    if _pi_runs_today()["count"] >= PI_DAILY_CAP:
+        return ActionResponse(Action.RESPONSE, "daily cap", f"I've already run pi {PI_DAILY_CAP} times today, so I'll stop for now.")
+    cmd = [PI_NODE, PI_WRAPPER, "edit" if write else "read", f"{SPOKEN_STYLE}\n\nTask: {task}"]
+    _count_pi_run()
+    try:
+        # pi's launcher is `#!/usr/bin/env node`; the server's launchd PATH has no node (keg-only node@22).
+        env = {**os.environ, "PATH": f"{Path(PI_NODE).parent}:{os.environ.get('PATH', '')}"}
+        r = _run(cmd, timeout=PI_TIMEOUT, cwd=PI_CWD, env=env)
+    except subprocess.TimeoutExpired:
+        return ActionResponse(Action.RESPONSE, "pi timed out", "Pi took too long, so I stopped it.")
+    except (OSError, ValueError) as e:
+        logger.bind(tag=TAG).error(f"pi failed to start: {e}")
+        return ActionResponse(Action.RESPONSE, f"pi failed: {e}", "I couldn't start pi.")
+    answer = _final_answer(r.stdout)
+    if r.returncode != 0 or not answer:
+        err = _shorten((r.stderr or "no output").strip(), 200)
+        logger.bind(tag=TAG).error(f"pi exit {r.returncode}: {err}")
+        return ActionResponse(Action.RESPONSE, f"pi exit {r.returncode}: {err}", "Pi didn't give an answer.")
+    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    path = TASKS_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    path.write_text(f"# Task\n\n{task}\n\n# Mode\n\n{'edit' if write else 'read + bash (no deleting)'}\n\n# Answer\n\n{answer}\n")
+    spoken = f"{_two_sentences(answer)} The full answer is saved in pi tasks, file {path.stem}."
+    return ActionResponse(Action.RESPONSE, f"Saved to {path}\n{answer[:500]}", spoken)
+
+
+def _final_answer(stdout):
+    """pi prints dotenv's banner line first; drop it and keep the answer."""
+    lines = [l for l in (stdout or "").splitlines() if not l.startswith("\u25c7 injected env")]
+    return "\n".join(lines).strip()
+
+
+ask_pi_desc = {
+    "type": "function",
+    "function": {
+        "name": "ask_pi",
+        "description": (
+            "Ask pi, the desk's coding agent on the user's Mac, to look at the trading-signal project, run "
+            "commands to check live status, and answer. It can read files and run shell commands but cannot "
+            "delete anything. Use when the user says 'ask pi ...' or 'have the agent check ...' or asks for the desk "
+            "pipeline status without naming Claude. If they say 'ask Claude', use ask_claude instead. Set allow_changes true only if the user explicitly wants files edited; "
+            "that asks the user for spoken confirmation first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "The question or task, in plain words."},
+                "allow_changes": {"type": "boolean", "description": "True only if the task requires editing files."},
+            },
+            "required": ["task"],
+        },
+    },
+}
+
+
+@register_function("ask_pi", ask_pi_desc, ToolType.SYSTEM_CTL)
+def ask_pi(conn, task, allow_changes=False):
+    task = (task or "").strip()
+    if not task:
+        return ActionResponse(Action.RESPONSE, "empty task", "What should I ask pi?")
+    if len(task) > MAX_TASK_CHARS:
+        return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
+    if allow_changes or _RISKY.search(task):
+        return _create_pending("pi_write", {"task": task}, "That task may edit files in your project.")
+    return _run_pi(task, write=False)
+
+
+# ---------------------------------------------------------------------------------------------
+# Claude Code (kept alongside pi: the user says 'ask pi' or 'ask Claude')
+# ---------------------------------------------------------------------------------------------
 def _run_claude(task, write=False):
     cmd = [
         CLAUDE_BIN, "-p", task,
@@ -159,8 +254,8 @@ def _run_claude(task, write=False):
     if r.returncode != 0 or not answer:
         err = _shorten((r.stderr or "no output").strip(), 200)
         return ActionResponse(Action.RESPONSE, f"claude exit {r.returncode}: {err}", "Claude didn't give an answer.")
-    TASKS_DIR.mkdir(parents=True, exist_ok=True)
-    path = TASKS_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    CLAUDE_TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    path = CLAUDE_TASKS_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
     path.write_text(f"# Task\n\n{task}\n\n# Mode\n\n{'edit' if write else 'read-only'}\n\n# Answer\n\n{answer}\n")
     spoken = f"{_two_sentences(answer)} The full answer is saved in claude tasks, file {path.stem}."
     return ActionResponse(Action.RESPONSE, f"Saved to {path}\n{answer[:500]}", spoken)
@@ -171,9 +266,9 @@ ask_claude_desc = {
     "function": {
         "name": "ask_claude",
         "description": (
-            "Ask Claude Code on the user's Mac to look at their trading-signal project and answer a question. "
-            "Read-only by default (can read and search files, nothing else). Use for 'ask Claude ...', "
-            "'have Claude check ...'. Set allow_changes true only if the user explicitly wants files edited; "
+            "Ask Claude Code (Anthropic's Claude CLI) on the user's Mac to look at their trading-signal project and answer. Use ONLY when the user says 'ask Claude'; when they say 'ask pi' use ask_pi. "
+            "It can read files and run shell commands but deletion is denied. "
+            "Set allow_changes true only if the user explicitly wants files edited; "
             "that will ask the user for spoken confirmation first."
         ),
         "parameters": {
@@ -323,6 +418,8 @@ def confirm_action(conn, token):
         return ActionResponse(Action.RESPONSE, "invalid or expired token", "That code is wrong or has expired. Please ask again.")
     if item["kind"] == "claude_write":
         return _run_claude(item["args"]["task"], write=True)
+    if item["kind"] == "pi_write":
+        return _run_pi(item["args"]["task"], write=True)
     if item["kind"] == "mac":
         a = item["args"]
         # Re-validate: the allowlist may have changed since the request.

@@ -34,7 +34,9 @@ class MacControlTests(unittest.TestCase):
         self.patches = [
             mock.patch.object(mc, "DATA_DIR", d),
             mock.patch.object(mc, "ALLOWLIST", d / "control_allowlist.json"),
-            mock.patch.object(mc, "TASKS_DIR", d / "claude_tasks"),
+            mock.patch.object(mc, "TASKS_DIR", d / "pi_tasks"),
+            mock.patch.object(mc, "PI_RUNS", d / "pi_runs.json"),
+            mock.patch.object(mc, "CLAUDE_TASKS_DIR", d / "claude_tasks"),
         ]
         for p in self.patches:
             p.start()
@@ -50,20 +52,16 @@ class MacControlTests(unittest.TestCase):
         self.assertIn("apps", data)
         self.assertEqual(json.loads(mc.ALLOWLIST.read_text())["shortcuts"], [])
 
-    def test_ask_claude_readonly(self):
+    def test_ask_pi_read_mode(self):
         with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
-            r = mc.ask_claude(None, "what does the signal checker do?")
+            r = mc.ask_pi(None, "what does the signal checker do?")
         cmd = run.call_args[0][0]
-        self.assertEqual(cmd[:3], ["claude", "-p", "what does the signal checker do?"])
-        allowed = cmd[cmd.index("--allowedTools") + 1:cmd.index("--disallowedTools")]
-        denied = cmd[cmd.index("--disallowedTools") + 1:cmd.index("--permission-mode")]
-        self.assertEqual(allowed, ["Read", "Grep", "Glob", "Bash"])
-        for rule in ("Bash(rm:*)", "Bash(rmdir:*)", "Bash(sudo:*)", "Edit", "Write"):
-            self.assertIn(rule, denied)
-        self.assertNotIn("Bash", denied)  # bare Bash would deny every command
+        self.assertEqual(cmd[:3], [mc.PI_NODE, mc.PI_WRAPPER, "read"])
+        self.assertTrue(cmd[3].endswith("Task: what does the signal checker do?"))
+        self.assertIn("read aloud", cmd[3])  # spoken-style instruction is prepended
         self.assertFalse(run.call_args[1].get("shell"))
-        self.assertEqual(run.call_args[1]["timeout"], 120)
-        self.assertEqual(run.call_args[1]["cwd"], mc.CLAUDE_CWD)
+        self.assertEqual(run.call_args[1]["timeout"], mc.PI_TIMEOUT)
+        self.assertEqual(run.call_args[1]["cwd"], mc.PI_CWD)
         self.assertEqual(len(list(mc.TASKS_DIR.glob("*.md"))), 1)
         self.assertIn("Answer one. Answer two.", r.response)
         self.assertNotIn("Answer three", r.response)  # spoken text limited to two sentences
@@ -71,7 +69,7 @@ class MacControlTests(unittest.TestCase):
 
     def test_risky_task_needs_confirmation(self):
         with mock.patch.object(mc.subprocess, "run") as run:
-            r = mc.ask_claude(None, "fix the bug in signals.py")
+            r = mc.ask_pi(None, "fix the bug in signals.py")
             self.assertFalse(run.called)
         self.assertIn("confirm", r.response)
         self.assertEqual(len(mc._pending), 1)
@@ -80,20 +78,54 @@ class MacControlTests(unittest.TestCase):
         with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
             mc.confirm_action(None, " ".join(token))
         cmd = run.call_args[0][0]
+        self.assertEqual(cmd[2], "edit")  # confirmed run uses pi's edit mode
+
+    def test_daily_cap_blocks_pi(self):
+        with mock.patch.object(mc, "PI_DAILY_CAP", 1), mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+            mc.ask_pi(None, "what is the status")
+            r = mc.ask_pi(None, "and the status again")
+        self.assertEqual(run.call_count, 1)
+        self.assertIn("stop for now", r.response)
+
+    def test_ask_claude_still_available(self):
+        """'ask Claude' keeps using the Claude CLI (Bash allowed, deletion denied); 'ask pi' uses pi."""
+        with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+            r = mc.ask_claude(None, "what does the signal checker do?")
+        cmd = run.call_args[0][0]
+        self.assertEqual(cmd[:3], ["claude", "-p", "what does the signal checker do?"])
         allowed = cmd[cmd.index("--allowedTools") + 1:cmd.index("--disallowedTools")]
         denied = cmd[cmd.index("--disallowedTools") + 1:cmd.index("--permission-mode")]
-        self.assertIn("Edit", allowed)
-        self.assertIn("Bash", allowed)
-        self.assertIn("Bash(rm:*)", denied)
+        self.assertEqual(allowed, ["Read", "Grep", "Glob", "Bash"])
+        for rule in ("Bash(rm:*)", "Bash(sudo:*)", "Edit", "Write"):
+            self.assertIn(rule, denied)
+        self.assertFalse(run.call_args[1].get("shell"))
+        self.assertEqual(run.call_args[1]["cwd"], mc.CLAUDE_CWD)
+        self.assertEqual(len(list(mc.CLAUDE_TASKS_DIR.glob("*.md"))), 1)
+        self.assertIn("Answer one. Answer two.", r.response)
+
+    def test_ask_claude_risky_needs_confirmation_then_edits(self):
+        with mock.patch.object(mc.subprocess, "run") as run:
+            mc.ask_claude(None, "fix the bug in signals.py")
+            self.assertFalse(run.called)
+        token = next(iter(mc._pending))
+        with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+            mc.confirm_action(None, " ".join(token))
+        cmd = run.call_args[0][0]
+        self.assertEqual(cmd[0], "claude")
+        self.assertIn("Edit", cmd[cmd.index("--allowedTools") + 1:cmd.index("--disallowedTools")])
+
+    def test_both_tools_registered(self):
+        self.assertEqual(mc.ask_pi_desc["function"]["name"], "ask_pi")
+        self.assertEqual(mc.ask_claude_desc["function"]["name"], "ask_claude")
 
     def test_token_single_use_and_expiry(self):
-        mc.ask_claude(None, "x", allow_changes=True)
+        mc.ask_pi(None, "x", allow_changes=True)
         token = next(iter(mc._pending))
         with mock.patch.object(mc.subprocess, "run", return_value=ok()):
             mc.confirm_action(None, token)
             again = mc.confirm_action(None, token)
         self.assertIn("wrong or has expired", again.response)
-        mc.ask_claude(None, "y", allow_changes=True)
+        mc.ask_pi(None, "y", allow_changes=True)
         token = next(iter(mc._pending))
         with mock.patch.object(mc, "_now", return_value=mc._now() + 61), mock.patch.object(mc.subprocess, "run") as run:
             r = mc.confirm_action(None, token)
