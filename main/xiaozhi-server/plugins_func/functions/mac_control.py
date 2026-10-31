@@ -32,11 +32,20 @@ CONFIRM_TTL = 60
 MAX_TASK_CHARS = 1000
 DEFAULT_ALLOWLIST = {"apps": ["Safari", "Notes", "Calendar", "Music", "Spotify", "Terminal"], "shortcuts": []}
 
-READ_TOOLS = "Read,Grep,Glob"
-# Confirmed "change" mode: file edits only. No Bash, so no commands, deletes or moves.
-WRITE_TOOLS = "Read,Grep,Glob,Edit,Write"
-DENY_READ = "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch"
-DENY_WRITE = "Bash,NotebookEdit,WebFetch,WebSearch"
+# Bash is allowed (so Claude can run e.g. `node pipeline_status.js` for live status) but deletion is
+# denied. Deny rules beat allow rules in Claude Code. This is a guard against the obvious, not a
+# sandbox: scripting languages (node -e, python -c) or `mv` over a file can still destroy data.
+BASH_DENY = [
+    "Bash(rm:*)", "Bash(rmdir:*)", "Bash(unlink:*)", "Bash(shred:*)", "Bash(trash:*)",
+    "Bash(find * -delete*)", "Bash(find * -exec rm*)", "Bash(git clean:*)", "Bash(git reset --hard*)",
+    "Bash(sudo:*)", "Bash(xargs:*)", "Bash(eval:*)", "Bash(sh:*)", "Bash(bash:*)", "Bash(zsh:*)",
+]
+READ_TOOLS = ["Read", "Grep", "Glob", "Bash"]
+# Confirmed "change" mode adds file edits on top.
+WRITE_TOOLS = READ_TOOLS + ["Edit", "Write"]
+_NO_WEB = ["NotebookEdit", "WebFetch", "WebSearch"]
+DENY_READ = ["Edit", "Write"] + _NO_WEB + BASH_DENY
+DENY_WRITE = _NO_WEB + BASH_DENY
 
 # Words suggesting the task wants to change files or run something.
 _RISKY = re.compile(
@@ -135,8 +144,8 @@ def _run_claude(task, write=False):
     cmd = [
         CLAUDE_BIN, "-p", task,
         "--append-system-prompt", SPOKEN_STYLE,
-        "--allowedTools", WRITE_TOOLS if write else READ_TOOLS,
-        "--disallowedTools", DENY_WRITE if write else DENY_READ,
+        "--allowedTools", *(WRITE_TOOLS if write else READ_TOOLS),
+        "--disallowedTools", *(DENY_WRITE if write else DENY_READ),
         "--permission-mode", "acceptEdits" if write else "default",
     ]
     try:

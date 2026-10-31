@@ -55,8 +55,12 @@ class MacControlTests(unittest.TestCase):
             r = mc.ask_claude(None, "what does the signal checker do?")
         cmd = run.call_args[0][0]
         self.assertEqual(cmd[:3], ["claude", "-p", "what does the signal checker do?"])
-        self.assertEqual(cmd[cmd.index("--allowedTools") + 1], "Read,Grep,Glob")
-        self.assertIn("Bash", cmd[cmd.index("--disallowedTools") + 1])
+        allowed = cmd[cmd.index("--allowedTools") + 1:cmd.index("--disallowedTools")]
+        denied = cmd[cmd.index("--disallowedTools") + 1:cmd.index("--permission-mode")]
+        self.assertEqual(allowed, ["Read", "Grep", "Glob", "Bash"])
+        for rule in ("Bash(rm:*)", "Bash(rmdir:*)", "Bash(sudo:*)", "Edit", "Write"):
+            self.assertIn(rule, denied)
+        self.assertNotIn("Bash", denied)  # bare Bash would deny every command
         self.assertFalse(run.call_args[1].get("shell"))
         self.assertEqual(run.call_args[1]["timeout"], 120)
         self.assertEqual(run.call_args[1]["cwd"], mc.CLAUDE_CWD)
@@ -76,8 +80,11 @@ class MacControlTests(unittest.TestCase):
         with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
             mc.confirm_action(None, " ".join(token))
         cmd = run.call_args[0][0]
-        self.assertIn("Edit", cmd[cmd.index("--allowedTools") + 1])
-        self.assertNotIn("Bash", cmd[cmd.index("--allowedTools") + 1])
+        allowed = cmd[cmd.index("--allowedTools") + 1:cmd.index("--disallowedTools")]
+        denied = cmd[cmd.index("--disallowedTools") + 1:cmd.index("--permission-mode")]
+        self.assertIn("Edit", allowed)
+        self.assertIn("Bash", allowed)
+        self.assertIn("Bash(rm:*)", denied)
 
     def test_token_single_use_and_expiry(self):
         mc.ask_claude(None, "x", allow_changes=True)

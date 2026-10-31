@@ -5,14 +5,14 @@ Enable by adding `mac_control` to `Intent.function_call.functions` in `data/.con
 
 | Tool | What it does |
 |---|---|
-| `ask_claude(task, allow_changes=False)` | Runs `claude -p` in `/Users/kinsha/Spx_Trading_Signal`, read-only (`Read,Grep,Glob`; Bash/Edit/Write/web denied), 120 s timeout. Full answer saved to `data/claude_tasks/<timestamp>.md`; speaks two short sentences. |
+| `ask_claude(task, allow_changes=False)` | Runs `claude -p` in `/Users/kinsha/Spx_Trading_Signal`, `Read,Grep,Glob,Bash` (Edit/Write/web denied; Bash allowed but deletion denied: `rm`, `rmdir`, `unlink`, `shred`, `find -delete`, `git clean`, `sudo`, `xargs`, `sh`/`bash`/`eval`), 120 s timeout. Full answer saved to `data/claude_tasks/<timestamp>.md`; speaks two short sentences. |
 | `mac_control(action, arg)` | `set_volume` (0-100), `mute`, `play_pause`, `lock_screen`, `open_app`, `run_shortcut`. |
 | `confirm_action(token)` | Runs the pending risky action. Tokens: 4 digits, single-use, expire after 60 s. |
 
 **Confirmation.** Tasks that look like they edit/run things (or `allow_changes=true`), `lock_screen` and
 `run_shortcut` do nothing on the first call. The device speaks a 4-digit code; the user says "confirm 4 8 2 1".
 The code is only in the spoken text, not in the text returned to the LLM. Confirmed Claude tasks may use
-Read/Grep/Glob/Edit/Write only (no Bash, so no commands, deletes or moves).
+Read/Grep/Glob/Bash/Edit/Write, with the same deletion denies. Not a sandbox: `node -e`, `python -c` or `mv` can still destroy data.
 
 **Allowlist.** `data/control_allowlist.json` (created with an example if missing):
 `{"apps": ["Safari", ...], "shortcuts": []}`. `open_app` and `run_shortcut` only accept exact
