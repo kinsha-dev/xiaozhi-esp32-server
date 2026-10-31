@@ -103,3 +103,23 @@ argument list, query passed after `--`). "Search GitHub for esp32 voice assistan
 `gh search code` and private results use the signed-in account's access. Needs `gh auth status` to be OK.
 
 Tests: `PYTHONPATH=. python -m unittest tests.test_github_search`.
+
+## browser_task plugin (jev-ultrafast browser use)
+
+Module `browser_task.py`; tool `browser_task(url, goal)`. Enable by adding `browser_task` to
+`Intent.function_call.functions` (needs `confirm_action` too). Uses a pinned clone of
+[browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT) at
+`~/esp/xiaozhi-local/vendor/jev-ultrafast` (commit 8251e27, installed with `uv sync`, `uv` from Homebrew).
+
+Setup: copy `.env.example` to `.env` there (mode 600) and fill `TYPESAFE_API_KEY` (docs.typesafe.ai) and
+`TEXT_MODEL_API_KEY` (the OpenRouter key). Chrome must allow remote debugging (`browser-harness --doctor`,
+`browser-harness mac-approve` for the macOS sheet). Browser Harness telemetry is switched off (opt-out stored in
+`~/.config/browser-harness` and `BH_TELEMETRY=0` on every run).
+
+"Open the Wikipedia article about Godel" -> the board names the site and goal and waits for a spoken yes; the agent
+then works in its own background tab of your Chrome (same signed-in profile) for at most 120 s and speaks where it
+ended. Page text goes to api.typesafe.ai and openrouter.ai. Only public https sites; goals mentioning log in, pay,
+buy, send, post, delete, book, submit, download and similar are refused. Limits of jev: no iframes, canvas, uploads or
+popup tabs.
+
+Tests: `PYTHONPATH=. python -m unittest tests.test_browser_task`.
