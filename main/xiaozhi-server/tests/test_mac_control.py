@@ -118,6 +118,30 @@ class MacControlTests(unittest.TestCase):
         self.assertEqual(mc.ask_pi_desc["function"]["name"], "ask_pi")
         self.assertEqual(mc.ask_claude_desc["function"]["name"], "ask_claude")
 
+    def test_project_selects_folder_and_blocks_push(self):
+        with TemporaryDirectory() as d, mock.patch.dict(mc.PROJECTS, {"voicebox": d}):
+            with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+                mc.ask_pi(None, "what changed lately", project="voicebox")
+            self.assertEqual(run.call_args[1]["cwd"], d)
+            self.assertEqual(run.call_args[1]["env"]["PI_ASK_DIR"], d)
+            self.assertIn("Never run git push", run.call_args[0][0][3])
+            with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+                mc.ask_claude(None, "what changed lately", project="voicebox")
+            cmd = run.call_args[0][0]
+            self.assertEqual(run.call_args[1]["cwd"], d)
+            self.assertIn("Bash(git push:*)", cmd[cmd.index("--disallowedTools") + 1:cmd.index("--permission-mode")])
+            with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+                mc.ask_claude(None, "what changed lately", project="nonsense")
+            self.assertEqual(run.call_args[1]["cwd"], mc.CLAUDE_CWD)  # unknown name -> trading repo
+
+    def test_project_survives_confirmation(self):
+        with TemporaryDirectory() as d, mock.patch.dict(mc.PROJECTS, {"server": d}):
+            mc.ask_claude(None, "fix the typo", project="server")
+            token = next(iter(mc._pending))
+            with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+                mc.confirm_action(None, " ".join(token))
+            self.assertEqual(run.call_args[1]["cwd"], d)
+
     def test_token_single_use_and_expiry(self):
         mc.ask_pi(None, "x", allow_changes=True)
         token = next(iter(mc._pending))

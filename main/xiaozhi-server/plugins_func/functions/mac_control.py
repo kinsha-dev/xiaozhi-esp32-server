@@ -33,7 +33,14 @@ PI_WRAPPER = os.environ.get("MAC_CONTROL_PI_WRAPPER", str(Path.home() / "esp/voi
 PI_TIMEOUT = 145  # just under the server's 150 s tool-call limit; pi_ask.js stops itself at 140 s
 PI_DAILY_CAP = int(os.environ.get("MAC_CONTROL_PI_DAILY_CAP", "20"))
 PI_RUNS = DATA_DIR / "pi_runs.json"
-CLAUDE_CWD = os.environ.get("MAC_CONTROL_CLAUDE_CWD", "/Users/kinsha/Spx_Trading_Signal")
+# Projects the agents may work in. "trading" is the default; the others only when the user names them.
+PROJECTS = {
+    "trading": PI_CWD,
+    "voicebox": str(Path.home() / "esp/voice-note-box"),
+    "server": str(Path.home() / "esp/xiaozhi-server"),
+}
+PROJECT_ENUM = list(PROJECTS)
+CLAUDE_CWD = os.environ.get("MAC_CONTROL_CLAUDE_CWD", "/Users/kinsha/Spx_Trading_Signal")  # default project
 CLAUDE_BIN = os.environ.get("MAC_CONTROL_CLAUDE_BIN", "claude")
 CLAUDE_TIMEOUT = 120
 # Bash is allowed (so Claude can run e.g. `node pipeline_status.js` for live status) but deletion is
@@ -110,6 +117,17 @@ def _create_pending(kind, args, prompt):
     return ActionResponse(Action.RESPONSE, f"Confirmation required for: {prompt} (token sent by voice only)", spoken)
 
 
+def _project_dir(project, default):
+    """Folder for a named project; unknown or missing names fall back to the default (trading) project."""
+    path = default if project in (None, "", "trading") else PROJECTS.get(project, default)
+    return path if os.path.isdir(path) else default
+
+
+def _no_push(project):
+    """Pushes are blocked for the voice-box repos (the trading repo keeps its own, confirm-gated, behaviour)."""
+    return project in ("voicebox", "server")
+
+
 def _run(cmd, timeout=15, cwd=None, env=None):
     """Single choke point for subprocesses: list args only, never a shell."""
     assert isinstance(cmd, list) and all(isinstance(c, str) for c in cmd)
@@ -165,15 +183,17 @@ def _count_pi_run():
     PI_RUNS.write_text(json.dumps(d))
 
 
-def _run_pi(task, write=False):
+def _run_pi(task, write=False, project=None):
     if _pi_runs_today()["count"] >= PI_DAILY_CAP:
         return ActionResponse(Action.RESPONSE, "daily cap", f"I've already run pi {PI_DAILY_CAP} times today, so I'll stop for now.")
-    cmd = [PI_NODE, PI_WRAPPER, "edit" if write else "read", f"{SPOKEN_STYLE}\n\nTask: {task}"]
+    style = SPOKEN_STYLE + (" Never run git push or touch any remote." if _no_push(project) else "")
+    cmd = [PI_NODE, PI_WRAPPER, "edit" if write else "read", f"{style}\n\nTask: {task}"]
     _count_pi_run()
     try:
         # pi's launcher is `#!/usr/bin/env node`; the server's launchd PATH has no node (keg-only node@22).
-        env = {**os.environ, "PATH": f"{Path(PI_NODE).parent}:{os.environ.get('PATH', '')}"}
-        r = _run(cmd, timeout=PI_TIMEOUT, cwd=PI_CWD, env=env)
+        workdir = _project_dir(project, PI_CWD)
+        env = {**os.environ, "PATH": f"{Path(PI_NODE).parent}:{os.environ.get('PATH', '')}", "PI_ASK_DIR": workdir}
+        r = _run(cmd, timeout=PI_TIMEOUT, cwd=workdir, env=env)
     except subprocess.TimeoutExpired:
         return ActionResponse(Action.RESPONSE, "pi timed out", "Pi took too long, so I stopped it.")
     except (OSError, ValueError) as e:
@@ -214,6 +234,7 @@ ask_pi_desc = {
             "type": "object",
             "properties": {
                 "task": {"type": "string", "description": "The question or task, in plain words."},
+                "project": {"type": "string", "enum": PROJECT_ENUM, "description": "Which project: trading (default, the trading-signal desk), voicebox (the voice box / ESP32 board software, the 'vibi' project) or server (the XiaoZhi voice server). Say voicebox or server only when the user names the voice box, the ESP, the board or the voice server."},
                 "allow_changes": {"type": "boolean", "description": "True only if the task requires editing files."},
             },
             "required": ["task"],
@@ -223,30 +244,30 @@ ask_pi_desc = {
 
 
 @register_function("ask_pi", ask_pi_desc, ToolType.SYSTEM_CTL)
-def ask_pi(conn, task, allow_changes=False):
+def ask_pi(conn, task, allow_changes=False, project="trading"):
     task = (task or "").strip()
     if not task:
         return ActionResponse(Action.RESPONSE, "empty task", "What should I ask pi?")
     if len(task) > MAX_TASK_CHARS:
         return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
     if allow_changes or _RISKY.search(task):
-        return _create_pending("pi_write", {"task": task}, "That task may edit files in your project.")
-    return _run_pi(task, write=False)
+        return _create_pending("pi_write", {"task": task, "project": project}, "That task may edit files in your project.")
+    return _run_pi(task, write=False, project=project)
 
 
 # ---------------------------------------------------------------------------------------------
 # Claude Code (kept alongside pi: the user says 'ask pi' or 'ask Claude')
 # ---------------------------------------------------------------------------------------------
-def _run_claude(task, write=False):
+def _run_claude(task, write=False, project=None):
     cmd = [
         CLAUDE_BIN, "-p", task,
         "--append-system-prompt", SPOKEN_STYLE,
         "--allowedTools", *(WRITE_TOOLS if write else READ_TOOLS),
-        "--disallowedTools", *(DENY_WRITE if write else DENY_READ),
+        "--disallowedTools", *(DENY_WRITE if write else DENY_READ), *(["Bash(git push:*)"] if _no_push(project) else []),
         "--permission-mode", "acceptEdits" if write else "default",
     ]
     try:
-        r = _run(cmd, timeout=CLAUDE_TIMEOUT, cwd=CLAUDE_CWD)
+        r = _run(cmd, timeout=CLAUDE_TIMEOUT, cwd=_project_dir(project, CLAUDE_CWD))
     except subprocess.TimeoutExpired:
         return ActionResponse(Action.RESPONSE, "claude timed out", "Claude took longer than two minutes, so I stopped it.")
     except (OSError, ValueError) as e:
@@ -277,6 +298,7 @@ ask_claude_desc = {
             "type": "object",
             "properties": {
                 "task": {"type": "string", "description": "The question or task for Claude, in plain words."},
+                "project": {"type": "string", "enum": PROJECT_ENUM, "description": "Which project: trading (default, the trading-signal desk), voicebox (the voice box / ESP32 board software, the 'vibi' project) or server (the XiaoZhi voice server). Say voicebox or server only when the user names the voice box, the ESP, the board or the voice server."},
                 "allow_changes": {"type": "boolean", "description": "True only if the task requires editing files."},
             },
             "required": ["task"],
@@ -286,15 +308,15 @@ ask_claude_desc = {
 
 
 @register_function("ask_claude", ask_claude_desc, ToolType.SYSTEM_CTL)
-def ask_claude(conn, task, allow_changes=False):
+def ask_claude(conn, task, allow_changes=False, project="trading"):
     task = (task or "").strip()
     if not task:
         return ActionResponse(Action.RESPONSE, "empty task", "What should I ask Claude?")
     if len(task) > MAX_TASK_CHARS:
         return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
     if allow_changes or _RISKY.search(task):
-        return _create_pending("claude_write", {"task": task}, "That task may edit files in your project.")
-    return _run_claude(task, write=False)
+        return _create_pending("claude_write", {"task": task, "project": project}, "That task may edit files in your project.")
+    return _run_claude(task, write=False, project=project)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -419,9 +441,9 @@ def confirm_action(conn, token):
     if item is None or item["expires"] < _now():
         return ActionResponse(Action.RESPONSE, "invalid or expired token", "That code is wrong or has expired. Please ask again.")
     if item["kind"] == "claude_write":
-        return _run_claude(item["args"]["task"], write=True)
+        return _run_claude(item["args"]["task"], write=True, project=item["args"].get("project"))
     if item["kind"] == "pi_write":
-        return _run_pi(item["args"]["task"], write=True)
+        return _run_pi(item["args"]["task"], write=True, project=item["args"].get("project"))
     if item["kind"] == "mac":
         a = item["args"]
         # Re-validate: the allowlist may have changed since the request.
