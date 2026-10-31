@@ -180,6 +180,8 @@ def _run_pi(task, write=False):
         logger.bind(tag=TAG).error(f"pi failed to start: {e}")
         return ActionResponse(Action.RESPONSE, f"pi failed: {e}", "I couldn't start pi.")
     answer = _final_answer(r.stdout)
+    if r.returncode in (124, 143):  # pi_ask.js stops itself at 140 s (SIGTERM)
+        return ActionResponse(Action.RESPONSE, "pi timed out", "Pi ran out of time on that, so I stopped it. Try a smaller request.")
     if r.returncode != 0 or not answer:
         err = _shorten((r.stderr or "no output").strip(), 200)
         logger.bind(tag=TAG).error(f"pi exit {r.returncode}: {err}")
@@ -205,7 +207,7 @@ ask_pi_desc = {
             "Ask pi, the desk's coding agent on the user's Mac, to look at the trading-signal project, run "
             "commands to check live status, and answer. It can read files and run shell commands but cannot "
             "delete anything. Use when the user says 'ask pi ...' or 'have the agent check ...' or asks for the desk "
-            "pipeline status without naming Claude. If they say 'ask Claude', use ask_claude instead. Set allow_changes true only if the user explicitly wants files edited; "
+            "pipeline status without naming Claude. If they say 'ask Claude' (or 'cloud', 'claud', 'clod'), use ask_claude instead. Set allow_changes true only if the user explicitly wants files edited; "
             "that asks the user for spoken confirmation first."
         ),
         "parameters": {
@@ -266,7 +268,7 @@ ask_claude_desc = {
     "function": {
         "name": "ask_claude",
         "description": (
-            "Ask Claude Code (Anthropic's Claude CLI) on the user's Mac to look at their trading-signal project and answer. Use ONLY when the user says 'ask Claude'; when they say 'ask pi' use ask_pi. "
+            "Ask Claude Code (Anthropic's Claude CLI) on the user's Mac to look at their trading-signal project and answer. Use whenever the user says 'ask Claude' (the speech recogniser often hears the name as 'cloud', 'claud' or 'clod': treat those as Claude); when they say 'ask pi' use ask_pi. "
             "It can read files and run shell commands but deletion is denied. "
             "Set allow_changes true only if the user explicitly wants files edited; "
             "that will ask the user for spoken confirmation first."
