@@ -93,3 +93,13 @@ xiaozhi-server and the builds folder), skips hook loops, and always exits 0. Add
 ```json
 "Stop": [{"hooks": [{"type": "command", "command": "/usr/bin/python3 /Users/kinsha/esp/xiaozhi-server/main/xiaozhi-server/scripts/claude_stop_voicebox.py"}]}]
 ```
+
+## github_search plugin (voice GitHub search)
+
+Module `github_search.py`; tool `github_search(query, kind, owner, open_top)`. Enable by adding `github_search` to
+`Intent.function_call.functions`. Uses the Mac's signed-in `gh` CLI (`gh search repos|issues|prs|code`, read-only,
+argument list, query passed after `--`). "Search GitHub for esp32 voice assistant" -> count plus the top three;
+"...and open it" opens the best match in the default browser, only when it is an `https://github.com/` address.
+`gh search code` and private results use the signed-in account's access. Needs `gh auth status` to be OK.
+
+Tests: `PYTHONPATH=. python -m unittest tests.test_github_search`.
