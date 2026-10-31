@@ -73,10 +73,9 @@ class MacControlTests(unittest.TestCase):
             self.assertFalse(run.called)
         self.assertIn("confirm", r.response)
         self.assertEqual(len(mc._pending), 1)
-        token = next(iter(mc._pending))
-        self.assertNotIn(token, r.result)  # token only spoken
+        self.assertIn("go ahead", r.response)
         with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
-            mc.confirm_action(None, " ".join(token))
+            mc.confirm_action(None)
         cmd = run.call_args[0][0]
         self.assertEqual(cmd[2], "edit")  # confirmed run uses pi's edit mode
 
@@ -107,9 +106,8 @@ class MacControlTests(unittest.TestCase):
         with mock.patch.object(mc.subprocess, "run") as run:
             mc.ask_claude(None, "fix the bug in signals.py")
             self.assertFalse(run.called)
-        token = next(iter(mc._pending))
         with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
-            mc.confirm_action(None, " ".join(token))
+            mc.confirm_action(None)
         cmd = run.call_args[0][0]
         self.assertEqual(cmd[0], "claude")
         self.assertIn("Edit", cmd[cmd.index("--allowedTools") + 1:cmd.index("--disallowedTools")])
@@ -137,22 +135,20 @@ class MacControlTests(unittest.TestCase):
     def test_project_survives_confirmation(self):
         with TemporaryDirectory() as d, mock.patch.dict(mc.PROJECTS, {"server": d}):
             mc.ask_claude(None, "fix the typo", project="server")
-            token = next(iter(mc._pending))
             with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
-                mc.confirm_action(None, " ".join(token))
+                mc.confirm_action(None)
             self.assertEqual(run.call_args[1]["cwd"], d)
 
-    def test_token_single_use_and_expiry(self):
-        mc.ask_pi(None, "x", allow_changes=True)
-        token = next(iter(mc._pending))
+    def test_confirm_single_use_and_expiry(self):
+        r = mc.ask_pi(None, "x", allow_changes=True)
+        self.assertIn("project: x", r.response)  # spoken prompt names the specifics
         with mock.patch.object(mc.subprocess, "run", return_value=ok()):
-            mc.confirm_action(None, token)
-            again = mc.confirm_action(None, token)
-        self.assertIn("wrong or has expired", again.response)
+            mc.confirm_action(None)
+            again = mc.confirm_action(None)
+        self.assertIn("Nothing is waiting", again.response)
         mc.ask_pi(None, "y", allow_changes=True)
-        token = next(iter(mc._pending))
         with mock.patch.object(mc, "_now", return_value=mc._now() + 61), mock.patch.object(mc.subprocess, "run") as run:
-            r = mc.confirm_action(None, token)
+            r = mc.confirm_action(None)
             self.assertFalse(run.called)
         self.assertIn("expired", r.response)
 
@@ -181,8 +177,7 @@ class MacControlTests(unittest.TestCase):
         with mock.patch.object(mc.subprocess, "run", return_value=ok("")) as run:
             mc.mac_control(None, "lock_screen")
             self.assertFalse(run.called)
-            token = next(iter(mc._pending))
-            mc.confirm_action(None, token)
+            mc.confirm_action(None)
             self.assertEqual(run.call_args[0][0], ["pmset", "displaysleepnow"])
             run.reset_mock()
             r = mc.mac_control(None, "run_shortcut", "Format Disk")
@@ -190,7 +185,7 @@ class MacControlTests(unittest.TestCase):
             self.assertFalse(mc._pending)
             mc.mac_control(None, "run_shortcut", "good night")
             self.assertFalse(run.called)
-            mc.confirm_action(None, next(iter(mc._pending)))
+            mc.confirm_action(None)
             self.assertEqual(run.call_args[0][0], ["shortcuts", "run", "Good Night"])
 
     def test_unknown_action(self):

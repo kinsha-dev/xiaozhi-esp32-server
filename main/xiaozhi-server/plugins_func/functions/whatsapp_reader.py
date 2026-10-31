@@ -4,7 +4,7 @@ Tool: whatsapp_messages. Source: the notifications WhatsApp Desktop already show
 macOS notification database (needs Full Disk Access for the server's Python, no WhatsApp login, no network).
 Safety model: nothing is sent, replied to or deleted; message text never leaves this machine except in the
 spoken reply; a small local buffer (last 24 h, 50 messages) is kept in DATA_DIR; and reading the messages aloud
-needs the same spoken 4-digit confirmation as mac_control (the first reply only says how many are waiting).
+needs the same spoken yes/confirm step as mac_control (the first reply only says how many are waiting).
 """
 import json
 import os
@@ -149,7 +149,7 @@ whatsapp_messages_desc = {
             "Check for new incoming WhatsApp messages and read them aloud. Use when the user asks 'any new "
             "WhatsApp messages?', 'read my WhatsApp' or similar. Read-only: it cannot send, reply or delete. "
             "It first says how many are waiting and asks for spoken confirmation; after that, call "
-            "confirm_action with the digits the user says. Never invent message content."
+            "confirm_action once the user says yes. Never invent message content."
         ),
         "parameters": {"type": "object", "properties": {}, "required": []},
     },
@@ -166,4 +166,4 @@ def whatsapp_messages(conn):
         return ActionResponse(Action.RESPONSE, "no new messages", "No new WhatsApp messages.")
     n = len(unread)
     return mac_control._create_pending(
-        "whatsapp_read", {}, f"You have {n} new WhatsApp message{'s' if n != 1 else ''}.")
+        "whatsapp_read", {}, f"You have {n} new WhatsApp message{'s' if n != 1 else ''}. I would read out up to {MAX_READ}, with sender and a short preview.")

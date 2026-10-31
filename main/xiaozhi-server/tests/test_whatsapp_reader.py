@@ -54,9 +54,6 @@ class WhatsAppTests(unittest.TestCase):
             p.stop()
         self.tmp.cleanup()
 
-    def token(self):
-        return next(iter(mc._pending))
-
     def test_none_waiting(self):
         make_db(self.db, [(1, 2, "Other", "", "not whatsapp", 5)])
         r = wr.whatsapp_messages(None)
@@ -69,24 +66,23 @@ class WhatsAppTests(unittest.TestCase):
         self.assertIn("2 new WhatsApp messages", r.response)
         self.assertNotIn("Ann", r.response)
         self.assertNotIn("Dinner", r.response)
-        self.assertNotIn(self.token(), r.result)  # token only in spoken text
-        r2 = mc.confirm_action(None, self.token())
+        r2 = mc.confirm_action(None)
         self.assertIn("Ann: Dinner at eight?", r2.response)
         self.assertIn("Bob in Team: Running late", r2.response)
         # now read: nothing new
         self.assertIn("No new", wr.whatsapp_messages(None).response)
 
-    def test_wrong_token_does_not_read(self):
+    def test_nothing_read_without_confirm(self):
         make_db(self.db, [(1, 1, "Ann", "", "secret", 5)])
-        wr.whatsapp_messages(None)
-        r = mc.confirm_action(None, "0000")
+        r = wr.whatsapp_messages(None)
         self.assertNotIn("secret", r.response)
+        self.assertEqual(len(mc._pending), 1)
 
     def test_cap_and_preview(self):
         rows = [(i, 1, f"P{i}", "", "x" * 300, 100 - i) for i in range(1, 9)]
         make_db(self.db, rows)
         wr.whatsapp_messages(None)
-        r = mc.confirm_action(None, self.token())
+        r = mc.confirm_action(None)
         self.assertEqual(r.response.count("P"), 5)
         self.assertIn("And 3 more", r.response)
         self.assertLess(len(r.response), 5 * (wr.PREVIEW_CHARS + 20) + 60)
@@ -104,7 +100,7 @@ class WhatsAppTests(unittest.TestCase):
         make_db(self.db, [(1, 1, "Ann", "", "private text", 5)])
         r = wr.whatsapp_messages(None)
         self.assertNotIn("private", r.result)
-        r2 = mc.confirm_action(None, self.token())
+        r2 = mc.confirm_action(None)
         self.assertNotIn("private", r2.result)
 
 
