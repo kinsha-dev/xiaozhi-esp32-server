@@ -1361,7 +1361,7 @@ class ConnectionHandler:
                         )
                         # 超时时返回错误响应，避免整个流程卡死
                         tool_results.append((
-                            ActionResponse(action=Action.ERROR, result="哎呀，网络遇到点问题，请稍后再试下！"),
+                            ActionResponse(action=Action.ERROR, result="Sorry, that tool failed or took too long. Please try again."),
                             tool_call_data
                         ))
                         # 上报工具调用错误

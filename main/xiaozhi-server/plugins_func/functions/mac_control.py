@@ -105,8 +105,17 @@ def _shorten(text, limit=220):
     return text[: limit - 3].rsplit(" ", 1)[0] + "..."
 
 
+def _plain_speech(text):
+    """Strip markdown/code marks so the voice never reads backticks, asterisks or file paths aloud."""
+    text = re.sub(r"```.*?```", " ", text, flags=re.S)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = re.sub(r"\b[\w./-]+\.(?:js|py|json|jsonl|md|html|sh|yaml|yml|ts|txt)\b", "a file", text)
+    text = re.sub(r"[*#>|]+", " ", text)
+    return text
+
+
 def _two_sentences(text):
-    text = " ".join(text.split())
+    text = " ".join(_plain_speech(text).split())
     parts = re.split(r"(?<=[.!?])\s+", text)
     return _shorten(" ".join(parts[:2]))
 
@@ -114,9 +123,18 @@ def _two_sentences(text):
 # ---------------------------------------------------------------------------------------------
 # Claude
 # ---------------------------------------------------------------------------------------------
+# The first two sentences of the answer are read aloud, so they must work as speech.
+SPOKEN_STYLE = (
+    "Your answer is read aloud by a voice assistant. Begin with a plain-speech summary of at most two short "
+    "sentences that states the result directly: no code, backticks, markdown, file names, paths or commands, "
+    "and do not start by explaining your tools or limits. Put the detail after that summary."
+)
+
+
 def _run_claude(task, write=False):
     cmd = [
         CLAUDE_BIN, "-p", task,
+        "--append-system-prompt", SPOKEN_STYLE,
         "--allowedTools", WRITE_TOOLS if write else READ_TOOLS,
         "--disallowedTools", DENY_WRITE if write else DENY_READ,
         "--permission-mode", "acceptEdits" if write else "default",
