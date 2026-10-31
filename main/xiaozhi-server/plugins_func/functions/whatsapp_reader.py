@@ -8,8 +8,6 @@ needs the same spoken yes/confirm step as mac_control (the first reply only says
 """
 import json
 import os
-import plistlib
-import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -22,11 +20,9 @@ TAG = __name__
 logger = setup_logging()
 
 DATA_DIR = Path(os.environ.get("MAC_CONTROL_DATA_DIR", Path.home() / "esp/xiaozhi-local/data"))
-BUFFER = DATA_DIR / "whatsapp_buffer.json"
-NOTIF_DB = Path(os.environ.get(
-    "WHATSAPP_NOTIF_DB", Path.home() / "Library/Group Containers/group.com.apple.usernoted/db2/db"))
-APP_MATCH = "whatsapp"  # matches net.whatsapp.WhatsApp and WhatsApp Business bundle ids
-APPLE_EPOCH = 978307200  # CFAbsoluteTime 0 = 2001-01-01 UTC
+BUFFER = DATA_DIR / "whatsapp_buffer.json"  # read flags + recent messages
+INBOX = DATA_DIR / "whatsapp_inbox.json"    # written by scripts/whatsapp_collector.py
+STALE_AFTER = 300  # seconds without a collector refresh before we say it is not running
 MAX_AGE = 24 * 3600
 MAX_BUFFER = 50
 MAX_READ = 5        # messages read aloud per request
@@ -56,35 +52,16 @@ def _save_buffer(buf):
 
 
 def _fetch_notifications():
-    """Return [{id, sender, group, body, ts}] for WhatsApp notifications. Raises PermissionError/OSError."""
-    uri = f"file:{NOTIF_DB}?mode=ro"
+    """Messages from the inbox file written by scripts/whatsapp_collector.py (the only process with Full Disk
+    Access). Raises OSError when the collector has not run or its data is stale."""
     try:
-        con = sqlite3.connect(uri, uri=True, timeout=2)
-    except sqlite3.DatabaseError as e:
-        raise OSError(str(e))
-    try:
-        rows = con.execute(
-            "SELECT r.rec_id, r.data, r.delivered_date FROM record r JOIN app a ON a.app_id = r.app_id "
-            "WHERE lower(a.identifier) LIKE ? ORDER BY r.delivered_date DESC LIMIT 200",
-            (f"%{APP_MATCH}%",),
-        ).fetchall()
-    except sqlite3.DatabaseError as e:
-        raise OSError(str(e))
-    finally:
-        con.close()
-    out = []
-    for rec_id, blob, delivered in rows:
-        try:
-            req = plistlib.loads(blob).get("req", {})
-        except Exception:
-            continue
-        body = str(req.get("body") or "").strip()
-        if not body:
-            continue
-        ts = float(delivered) + APPLE_EPOCH if delivered else _now()
-        out.append({"id": str(rec_id), "sender": str(req.get("titl") or "Someone").strip(),
-                    "group": str(req.get("subt") or "").strip(), "body": body, "ts": ts})
-    return out
+        data = json.loads(INBOX.read_text())
+        msgs, updated = data["messages"], float(data["updated"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise OSError(f"inbox unreadable: {e}")
+    if _now() - updated > STALE_AFTER:
+        raise OSError("inbox is stale; is the collector running?")
+    return msgs
 
 
 def _refresh():
@@ -120,7 +97,7 @@ def _unavailable(e):
     logger.bind(tag=TAG).warning(f"WhatsApp notifications unreadable: {e}")
     return ActionResponse(
         Action.RESPONSE, f"cannot read notification database: {e}",
-        "I can't read WhatsApp notifications. The server needs Full Disk Access and WhatsApp Desktop must be running.")
+        "I can't read WhatsApp notifications. The WhatsApp collector isn't running or lacks Full Disk Access.")
 
 
 def _speak_unread(_args=None):

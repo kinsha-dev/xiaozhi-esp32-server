@@ -1,3 +1,4 @@
+import json
 import plistlib
 import sqlite3
 import sys
@@ -19,9 +20,17 @@ if not (Path(__file__).resolve().parents[1] / "data" / ".config.yaml").exists():
 
 from plugins_func.functions import mac_control as mc  # noqa: E402
 from plugins_func.functions import whatsapp_reader as wr  # noqa: E402
+from scripts import whatsapp_collector as col  # noqa: E402
 
 
-def make_db(path, rows, app="net.whatsapp.WhatsApp"):
+def make_db(path, rows):
+    """Write the collector's inbox file; rows are (id, app_id, sender, group, body, age_seconds), app_id 1 = WhatsApp."""
+    msgs = [{"id": str(i), "sender": t, "group": sub, "body": b, "ts": time.time() - age}
+            for i, app, t, sub, b, age in rows if app == 1]
+    path.write_text(json.dumps({"updated": time.time(), "messages": msgs}))
+
+
+def make_notif_db(path, rows, app="net.whatsapp.WhatsApp"):
     con = sqlite3.connect(path)
     con.execute("CREATE TABLE app (app_id INTEGER PRIMARY KEY, identifier TEXT)")
     con.execute("CREATE TABLE record (rec_id INTEGER PRIMARY KEY, app_id INTEGER, data BLOB, delivered_date REAL)")
@@ -29,8 +38,7 @@ def make_db(path, rows, app="net.whatsapp.WhatsApp"):
     con.execute("INSERT INTO app VALUES (2, 'com.other.App')")
     for rec_id, app_id, titl, subt, body, age in rows:
         data = plistlib.dumps({"req": {"titl": titl, "subt": subt, "body": body}})
-        con.execute("INSERT INTO record VALUES (?,?,?,?)",
-                    (rec_id, app_id, data, time.time() - wr.APPLE_EPOCH - age))
+        con.execute("INSERT INTO record VALUES (?,?,?,?)", (rec_id, app_id, data, time.time() - col.APPLE_EPOCH - age))
     con.commit()
     con.close()
 
@@ -43,7 +51,7 @@ class WhatsAppTests(unittest.TestCase):
         self.patches = [
             mock.patch.object(wr, "DATA_DIR", d),
             mock.patch.object(wr, "BUFFER", d / "whatsapp_buffer.json"),
-            mock.patch.object(wr, "NOTIF_DB", self.db),
+            mock.patch.object(wr, "INBOX", self.db),
         ]
         for p in self.patches:
             p.start()
@@ -91,9 +99,27 @@ class WhatsAppTests(unittest.TestCase):
         make_db(self.db, [(1, 1, "Old", "", "ancient", wr.MAX_AGE + 100)])
         self.assertIn("No new", wr.whatsapp_messages(None).response)
 
+    def test_stale_inbox(self):
+        make_db(self.db, [(1, 1, "Ann", "", "hi", 5)])
+        with mock.patch.object(wr, "_now", return_value=time.time() + wr.STALE_AFTER + 5):
+            r = wr.whatsapp_messages(None)
+        self.assertIn("collector", r.response)
+
+    def test_collector_filters_app_and_writes_private_inbox(self):
+        src = Path(self.tmp.name) / "notif.db"
+        make_notif_db(src, [(1, 1, "Ann", "", "hello", 10), (2, 2, "Other", "", "nope", 10), (3, 1, "Old", "", "x", col.MAX_AGE + 50)])
+        with mock.patch.object(col, "NOTIF_DB", src), mock.patch.object(col, "DATA_DIR", Path(self.tmp.name)), \
+                mock.patch.object(col, "INBOX", Path(self.tmp.name) / "inbox.json"):
+            self.assertEqual(col.refresh_once(), 1)
+            f = Path(self.tmp.name) / "inbox.json"
+            self.assertEqual(json.loads(f.read_text())["messages"][0]["sender"], "Ann")
+            self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+            with mock.patch.object(col, "NOTIF_DB", Path(self.tmp.name) / "missing"):
+                self.assertEqual(col.main(["--once"]), 1)
+
     def test_unreadable_db(self):
         r = wr.whatsapp_messages(None)  # file missing
-        self.assertIn("Full Disk Access", r.response)
+        self.assertIn("collector", r.response)
         self.assertEqual(mc._pending, {})
 
     def test_no_message_content_in_llm_result(self):

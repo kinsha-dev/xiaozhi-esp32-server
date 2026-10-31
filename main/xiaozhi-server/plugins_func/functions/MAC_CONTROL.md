@@ -29,17 +29,38 @@ Tests: `PYTHONPATH=. python -m unittest tests.test_mac_control` from `main/xiaoz
 Module `whatsapp_reader.py`; tool `whatsapp_messages`. Enable by adding `whatsapp_messages` to
 `Intent.function_call.functions` in `data/.config.yaml` (alongside `confirm_action`).
 
-Source: the notifications WhatsApp Desktop already shows, read from the macOS notification database
-(`~/Library/Group Containers/group.com.apple.usernoted/db2/db`, opened read-only). No WhatsApp login, no network,
-no unofficial API. Needs: WhatsApp Desktop installed and signed in with notifications on, and **Full Disk Access**
-for the Python that runs the server (System Settings > Privacy & Security > Full Disk Access, add the real binary of
-`.venv/bin/python`, then restart the server). Only notifications that were shown are visible, so previews hidden
-in WhatsApp's notification settings read as empty.
+Source: the notifications WhatsApp Desktop already shows. No WhatsApp login, no network, no unofficial API.
+`scripts/whatsapp_collector.py` (stdlib only, read-only on the macOS notification database, which lives in the
+protected `~/Library/Group Containers/group.com.apple.usernoted/db2/db`) copies them into
+`data/whatsapp_inbox.json` (mode 600, last 24 h, 50 messages). The server reads only that file, so **the server
+needs no Full Disk Access**; only the collector's interpreter does. macOS has no per-folder grant for this database.
+
+Setup:
+1. Needs WhatsApp Desktop signed in, notifications on, previews shown (hidden previews are skipped).
+2. Grant Full Disk Access to `/usr/bin/python3` (System Settings > Privacy & Security > Full Disk Access, "+", press
+   Cmd+Shift+G, type `/usr/bin/python3`). This lets any script run by that interpreter read protected data, so run
+   nothing else with it that you don't trust.
+3. Run the collector at login with a LaunchAgent, `~/Library/LaunchAgents/local.xiaozhi.whatsapp-collector.plist`:
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <plist version="1.0"><dict>
+     <key>Label</key><string>local.xiaozhi.whatsapp-collector</string>
+     <key>ProgramArguments</key><array>
+       <string>/usr/bin/python3</string>
+       <string>/Users/kinsha/esp/xiaozhi-server/main/xiaozhi-server/scripts/whatsapp_collector.py</string>
+     </array>
+     <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+     <key>StandardErrorPath</key><string>/tmp/whatsapp_collector.err</string>
+   </dict></plist>
+   ```
+   then `launchctl load ~/Library/LaunchAgents/local.xiaozhi.whatsapp-collector.plist`.
+4. Add `whatsapp_messages` to `Intent.function_call.functions` and restart the server.
+
+If the inbox is missing or older than 5 minutes the assistant says the collector isn't running.
 
 Flow: "any new WhatsApp messages?" -> the device says only how many are waiting and asks for a spoken yes; on
 "yes, confirm" it reads up to 5 messages as sender plus an 80-character preview and marks them read ("And N more"
-for the rest). Message text is never in the text returned to the LLM. Local buffer: `data/whatsapp_buffer.json`
-(mode 600, last 24 h, 50 messages). It cannot send, reply or delete. The notification-database layout is undocumented
+for the rest). Message text is never in the text returned to the LLM. Read flags are kept in `data/whatsapp_buffer.json` (mode 600). It cannot send, reply or delete. The notification-database layout is undocumented
 by Apple and may change between macOS versions; the plugin degrades to a spoken "can't read" message.
 
 Tests: `PYTHONPATH=. python -m unittest tests.test_whatsapp_reader`.
