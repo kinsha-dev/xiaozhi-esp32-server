@@ -49,7 +49,7 @@ class BuilderTests(unittest.TestCase):
             mock.patch.object(fb, "BUILDS_DIR", d / "builds"),
             mock.patch.object(fb, "JOBS", d / "builds" / "jobs.json"),
             mock.patch.object(fb, "VIBI", str(d / "no-vibi")),
-            mock.patch.dict(mc.PROJECTS, {"server": str(d / "repo"), "voicebox": str(d / "repo")}),
+            mock.patch.dict(mc.PROJECTS, {"server": str(d / "repo"), "voicebox": str(d / "repo"), "trading": str(d / "repo")}),
         ]
         for p in self.patches:
             p.start()
@@ -77,9 +77,12 @@ class BuilderTests(unittest.TestCase):
         self.assertIn("no pushing", r.response)
 
     def test_rejects_trading_and_empty(self):
-        self.assertIn("Which one", fb.build_feature(None, "x", "trading").response)
+        self.assertIn("Which one", fb.build_feature(None, "x", "elsewhere").response)
         self.assertIn("What should I build", fb.build_feature(None, " ", "server").response)
         self.assertEqual(mc._pending, {})
+
+    def test_trading_is_buildable(self):
+        self.assertIn("trading project", fb.build_feature(None, "add a check", "trading").response)
 
     def test_confirm_starts_worktree_and_sandboxed_claude(self):
         r, run, popen, th = self.start(FakeProc())

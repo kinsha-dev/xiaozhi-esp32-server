@@ -26,7 +26,7 @@ logger = setup_logging()
 
 BUILDS_DIR = mc.DATA_DIR / "builds"
 JOBS = BUILDS_DIR / "jobs.json"
-BUILD_PROJECTS = ("server", "voicebox")  # trading is deliberately not buildable by voice
+BUILD_PROJECTS = tuple(mc.PROJECT_ENUM)  # every project mac_control knows: trading, voicebox, server
 BUILD_TIMEOUT = int(os.environ.get("FEATURE_BUILD_TIMEOUT", str(30 * 60)))
 VIBI = os.environ.get("VIBI_BIN", str(Path.home() / "esp/voice-note-box/bin/vibi"))
 MAX_REQUEST_CHARS = 1500
@@ -158,8 +158,7 @@ build_feature_desc = {
     "function": {
         "name": "build_feature",
         "description": (
-            "Have Claude build a new feature or change in the voice box ('voicebox') or voice server ('server') "
-            "software, in the background on a separate git branch (never the live code, never pushed). Use when "
+            "Have Claude build a new feature or change in a project: trading (the trading-signal desk), voicebox (the board software) or server (the XiaoZhi voice server), in the background on a separate git branch (never the live code, never pushed). Use when "
             "the user says 'build ...', 'add a feature ...' or 'ask Claude to build ...'. Set followup true to "
             "continue the most recent build's branch with further changes. It first reads the details back and "
             "asks for a spoken yes; only then call confirm_action."
@@ -168,7 +167,7 @@ build_feature_desc = {
             "type": "object",
             "properties": {
                 "request": {"type": "string", "description": "What to build, in the user's words, with enough detail to act on."},
-                "project": {"type": "string", "enum": list(BUILD_PROJECTS), "description": "voicebox (the board software) or server (the XiaoZhi voice server)."},
+                "project": {"type": "string", "enum": list(BUILD_PROJECTS), "description": "trading (the trading-signal desk), voicebox (the board software) or server (the XiaoZhi voice server)."},
                 "followup": {"type": "boolean", "description": "True to continue the previous build's branch."},
             },
             "required": ["request", "project"],
@@ -185,7 +184,7 @@ def build_feature(conn, request, project, followup=False):
     if len(request) > MAX_REQUEST_CHARS:
         return ActionResponse(Action.RESPONSE, "request too long", "That request is too long. Please shorten it.")
     if project not in BUILD_PROJECTS:
-        return ActionResponse(Action.RESPONSE, "bad project", "I can build in the voice box or the server project. Which one?")
+        return ActionResponse(Action.RESPONSE, "bad project", "I can build in the trading, voice box or server project. Which one?")
     where = "continue the last build's branch" if followup else "start a new branch in a separate workspace"
     return mc._create_pending(
         "build_start", {"request": request, "project": project, "followup": bool(followup)},

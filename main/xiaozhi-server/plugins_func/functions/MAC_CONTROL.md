@@ -74,7 +74,7 @@ Module `feature_builder.py`; tools `build_feature(request, project, followup=Fal
   live code untouched) and waits for a spoken yes; `confirm_action` then starts the build.
 - The build runs the Claude CLI (read, bash, edit, write; `git push`, `git merge`, deletion, sudo and shells denied)
   in a new git worktree `data/builds/<project>_<time>` on a new branch `voice/<time>-<slug>`. One build at a time,
-  30 min limit (`FEATURE_BUILD_TIMEOUT`). Only `server` and `voicebox` can be built, not `trading`.
+  30 min limit (`FEATURE_BUILD_TIMEOUT`). Any project known to `mac_control` can be built (`trading`, `voicebox`, `server`); the safeguards above apply to all.
 - Follow-ups: `build_status` -> "status" (still running?), "result" (what it built and the branch to review),
   "cancel". `build_feature(followup=true)` continues the latest build's branch with further changes. When a build ends
   it queues a spoken note through `voice-note-box/bin/vibi say` if that exists, so "any messages?" reports it.
