@@ -1,8 +1,7 @@
 """Voice-started background feature builds for the voice box and server repos.
 
 Tools: build_feature, build_status.
-Safety model: a build only starts after the spoken details-then-yes confirmation (mac_control's pending
-step); it runs the Claude CLI in a separate git worktree on a new `voice/...` branch under DATA_DIR/builds, so the
+Safety model: no spoken confirmation (the work is isolated and reviewable); it runs the Claude CLI in a separate git worktree on a new `voice/...` branch under DATA_DIR/builds, so the
 live checkout is never touched; Claude may edit and commit there but git push, deletion, sudo and shells are denied;
 one build runs at a time with a hard time limit. Merging stays a manual step. Progress and follow-ups go through
 build_status (status / result / cancel) and build_feature(followup=true) continues the latest branch.
@@ -151,8 +150,6 @@ def _start(args):
                           f"Started. I'll tell you when it's done. Ask for the build status any time.")
 
 
-mc.register_pending_handler("build_start", _start)
-
 build_feature_desc = {
     "type": "function",
     "function": {
@@ -160,8 +157,8 @@ build_feature_desc = {
         "description": (
             "Have Claude build a new feature or change in a project: trading (the trading-signal desk), voicebox (the board software) or server (the XiaoZhi voice server), in the background on a separate git branch (never the live code, never pushed). Use when "
             "the user says 'build ...', 'add a feature ...' or 'ask Claude to build ...'. Set followup true to "
-            "continue the most recent build's branch with further changes. It first reads the details back and "
-            "asks for a spoken yes; only then call confirm_action."
+            "continue the most recent build's branch with further changes. It starts immediately: the work is "
+            "isolated on its own branch, so no confirmation is needed."
         ),
         "parameters": {
             "type": "object",
@@ -185,11 +182,7 @@ def build_feature(conn, request, project, followup=False):
         return ActionResponse(Action.RESPONSE, "request too long", "That request is too long. Please shorten it.")
     if project not in BUILD_PROJECTS:
         return ActionResponse(Action.RESPONSE, "bad project", "I can build in the trading, voice box or server project. Which one?")
-    where = "continue the last build's branch" if followup else "start a new branch in a separate workspace"
-    return mc._create_pending(
-        "build_start", {"request": request, "project": project, "followup": bool(followup)},
-        f"I'm about to have Claude build this in the {project} project and {where}, with no pushing and no changes to the live code: "
-        f"{mc._shorten(request, 160)}.")
+    return _start({"request": request, "project": project, "followup": bool(followup)})
 
 
 build_status_desc = {

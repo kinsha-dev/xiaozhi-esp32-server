@@ -10,7 +10,7 @@ Enable by adding `mac_control` to `Intent.function_call.functions` in `data/.con
 | `mac_control(action, arg)` | `set_volume` (0-100), `mute`, `play_pause`, `lock_screen`, `open_app`, `run_shortcut`. |
 | `confirm_action()` | Runs the newest pending risky action once the user has said yes. Single-use, expires after 60 s; a new request replaces the old one. |
 
-**Confirmation.** Tasks that look like they edit/run things (or `allow_changes=true`), `lock_screen` and
+**Confirmation (critical actions only).** Only tasks that edit live files (`ask_pi`/`ask_claude` with changes) and `run_shortcut` ask for a spoken yes. `lock_screen`, WhatsApp reading and voice builds run immediately. Tasks that look like they edit/run things (or `allow_changes=true`), `lock_screen` and
 `run_shortcut` do nothing on the first call. The device speaks exactly what it is about to do and asks; the user says "yes, confirm", which makes the model call
 `confirm_action`. There is no code, so the gate relies on the model calling it only after a real yes. Confirmed Claude tasks may use
 pi's `read,bash,edit,write` tools, still under the no-delete sandbox. Overwriting a file in place (`>`, `mv` over it) is still possible.
@@ -58,8 +58,7 @@ Setup:
 
 If the inbox is missing or older than 5 minutes the assistant says the collector isn't running.
 
-Flow: "any new WhatsApp messages?" -> the device says only how many are waiting and asks for a spoken yes; on
-"yes, confirm" it reads up to 5 messages as sender plus an 80-character preview and marks them read ("And N more"
+Flow: "any new WhatsApp messages?" -> the device says how many are waiting and reads up to 5 messages as sender plus an 80-character preview and marks them read ("And N more"
 for the rest). Message text is never in the text returned to the LLM. Read flags are kept in `data/whatsapp_buffer.json` (mode 600). It cannot send, reply or delete. The notification-database layout is undocumented
 by Apple and may change between macOS versions; the plugin degrades to a spoken "can't read" message.
 
@@ -70,8 +69,8 @@ Tests: `PYTHONPATH=. python -m unittest tests.test_whatsapp_reader`.
 Module `feature_builder.py`; tools `build_feature(request, project, followup=False)` and
 `build_status(action)`. Enable by adding `build_feature` and `build_status` to `Intent.function_call.functions`.
 
-- "Ask Claude to build a timer command for the voice box" -> the device reads the request back (project, no push,
-  live code untouched) and waits for a spoken yes; `confirm_action` then starts the build.
+- "Ask Claude to build a timer command for the voice box" -> the build starts immediately (no spoken yes: the work
+  is isolated on its own branch and nothing is pushed or merged).
 - The build runs the Claude CLI (read, bash, edit, write; `git push`, `git merge`, deletion, sudo and shells denied)
   in a new git worktree `data/builds/<project>_<time>` on a new branch `voice/<time>-<slug>`. One build at a time,
   30 min limit (`FEATURE_BUILD_TIMEOUT`). Any project known to `mac_control` can be built (`trading`, `voicebox`, `server`); the safeguards above apply to all.

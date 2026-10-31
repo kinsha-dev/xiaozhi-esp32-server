@@ -64,36 +64,23 @@ class WhatsAppTests(unittest.TestCase):
 
     def test_none_waiting(self):
         make_db(self.db, [(1, 2, "Other", "", "not whatsapp", 5)])
-        r = wr.whatsapp_messages(None)
-        self.assertIn("No new WhatsApp", r.response)
-        self.assertEqual(mc._pending, {})
+        self.assertIn("No new WhatsApp", wr.whatsapp_messages(None).response)
 
-    def test_count_first_then_confirm_reads(self):
+    def test_reads_immediately_without_confirmation(self):
         make_db(self.db, [(1, 1, "Ann", "", "Dinner at eight?", 60), (2, 1, "Bob", "Team", "Running late", 30)])
         r = wr.whatsapp_messages(None)
         self.assertIn("2 new WhatsApp messages", r.response)
-        self.assertNotIn("Ann", r.response)
-        self.assertNotIn("Dinner", r.response)
-        r2 = mc.confirm_action(None)
-        self.assertIn("Ann: Dinner at eight?", r2.response)
-        self.assertIn("Bob in Team: Running late", r2.response)
-        # now read: nothing new
-        self.assertIn("No new", wr.whatsapp_messages(None).response)
-
-    def test_nothing_read_without_confirm(self):
-        make_db(self.db, [(1, 1, "Ann", "", "secret", 5)])
-        r = wr.whatsapp_messages(None)
-        self.assertNotIn("secret", r.response)
-        self.assertEqual(len(mc._pending), 1)
+        self.assertIn("Ann: Dinner at eight?", r.response)
+        self.assertIn("Bob in Team: Running late", r.response)
+        self.assertEqual(mc._pending, {})
+        self.assertIn("No new", wr.whatsapp_messages(None).response)  # marked read
 
     def test_cap_and_preview(self):
-        rows = [(i, 1, f"P{i}", "", "x" * 300, 100 - i) for i in range(1, 9)]
-        make_db(self.db, rows)
-        wr.whatsapp_messages(None)
-        r = mc.confirm_action(None)
+        make_db(self.db, [(i, 1, f"P{i}", "", "x" * 300, 100 - i) for i in range(1, 9)])
+        r = wr.whatsapp_messages(None)
         self.assertEqual(r.response.count("P"), 5)
         self.assertIn("And 3 more", r.response)
-        self.assertLess(len(r.response), 5 * (wr.PREVIEW_CHARS + 20) + 60)
+        self.assertLess(len(r.response), 5 * (wr.PREVIEW_CHARS + 20) + 100)
 
     def test_old_messages_dropped(self):
         make_db(self.db, [(1, 1, "Old", "", "ancient", wr.MAX_AGE + 100)])
@@ -117,17 +104,14 @@ class WhatsAppTests(unittest.TestCase):
             with mock.patch.object(col, "NOTIF_DB", Path(self.tmp.name) / "missing"):
                 self.assertEqual(col.main(["--once"]), 1)
 
-    def test_unreadable_db(self):
-        r = wr.whatsapp_messages(None)  # file missing
-        self.assertIn("collector", r.response)
-        self.assertEqual(mc._pending, {})
+    def test_unreadable_inbox(self):
+        self.assertIn("collector", wr.whatsapp_messages(None).response)  # file missing
 
     def test_no_message_content_in_llm_result(self):
         make_db(self.db, [(1, 1, "Ann", "", "private text", 5)])
         r = wr.whatsapp_messages(None)
+        self.assertIn("private text", r.response)
         self.assertNotIn("private", r.result)
-        r2 = mc.confirm_action(None)
-        self.assertNotIn("private", r2.result)
 
 
 if __name__ == "__main__":

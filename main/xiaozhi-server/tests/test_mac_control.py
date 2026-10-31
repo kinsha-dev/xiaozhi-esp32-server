@@ -171,14 +171,13 @@ class MacControlTests(unittest.TestCase):
             self.assertFalse(run.called)
             self.assertIn("allowed", r.response)
 
-    def test_lock_and_shortcut_need_confirm(self):
+    def test_shortcut_needs_confirm_lock_does_not(self):
         mc.ALLOWLIST.parent.mkdir(parents=True, exist_ok=True)
         mc.ALLOWLIST.write_text(json.dumps({"apps": [], "shortcuts": ["Good Night"]}))
         with mock.patch.object(mc.subprocess, "run", return_value=ok("")) as run:
             mc.mac_control(None, "lock_screen")
-            self.assertFalse(run.called)
-            mc.confirm_action(None)
             self.assertEqual(run.call_args[0][0], ["pmset", "displaysleepnow"])
+            self.assertFalse(mc._pending)
             run.reset_mock()
             r = mc.mac_control(None, "run_shortcut", "Format Disk")
             self.assertFalse(run.called)

@@ -62,27 +62,26 @@ class BuilderTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def start(self, proc, request="add a timer tool", **kw):
-        fb.build_feature(None, request, "server", **kw)
         with mock.patch.object(fb.mc, "_run", side_effect=git_ok) as run, \
                 mock.patch.object(fb.subprocess, "Popen", return_value=proc) as popen, \
                 mock.patch.object(fb.threading, "Thread") as th:
-            r = mc.confirm_action(None)
+            r = fb.build_feature(None, request, "server", **kw)
         return r, run, popen, th
-
-    def test_nothing_starts_without_confirmation(self):
-        with mock.patch.object(fb.subprocess, "Popen") as popen:
-            r = fb.build_feature(None, "add a timer tool", "server")
-        self.assertFalse(popen.called)
-        self.assertIn("add a timer tool", r.response)  # details read back
-        self.assertIn("no pushing", r.response)
 
     def test_rejects_trading_and_empty(self):
         self.assertIn("Which one", fb.build_feature(None, "x", "elsewhere").response)
         self.assertIn("What should I build", fb.build_feature(None, " ", "server").response)
         self.assertEqual(mc._pending, {})
 
-    def test_trading_is_buildable(self):
-        self.assertIn("trading project", fb.build_feature(None, "add a check", "trading").response)
+    def test_trading_is_buildable_and_needs_no_confirmation(self):
+        r, run, popen, th = self.start(FakeProc())
+        self.assertIn("Started", r.response)
+        self.assertEqual(mc._pending, {})
+        with mock.patch.object(fb.mc, "_run", side_effect=git_ok), mock.patch.object(fb.subprocess, "Popen", return_value=FakeProc()), \
+                mock.patch.object(fb.threading, "Thread"):
+            fb._latest()  # exists
+            fb._procs.clear()
+            self.assertIn("Started", fb.build_feature(None, "add a check", "trading").response)
 
     def test_confirm_starts_worktree_and_sandboxed_claude(self):
         r, run, popen, th = self.start(FakeProc())
@@ -101,8 +100,7 @@ class BuilderTests(unittest.TestCase):
 
     def test_one_build_at_a_time(self):
         self.start(FakeProc())
-        fb.build_feature(None, "another", "server")
-        r = mc.confirm_action(None)
+        r = fb.build_feature(None, "another", "server")
         self.assertIn("already running", r.response)
 
     def test_watch_records_result_and_status_followups(self):
@@ -146,8 +144,8 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(fb._latest()["branch"], first["branch"])
 
     def test_followup_without_previous(self):
-        fb.build_feature(None, "more", "server", followup=True)
-        self.assertIn("no earlier", mc.confirm_action(None).response)
+        r = fb.build_feature(None, "more", "server", followup=True)
+        self.assertIn("no earlier", r.response)
 
     def test_status_when_server_restarted(self):
         self.start(FakeProc())

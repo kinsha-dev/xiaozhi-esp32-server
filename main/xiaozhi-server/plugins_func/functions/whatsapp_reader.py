@@ -3,8 +3,8 @@
 Tool: whatsapp_messages. Source: the notifications WhatsApp Desktop already shows on this Mac, read from the
 macOS notification database (needs Full Disk Access for the server's Python, no WhatsApp login, no network).
 Safety model: nothing is sent, replied to or deleted; message text never leaves this machine except in the
-spoken reply; a small local buffer (last 24 h, 50 messages) is kept in DATA_DIR; and reading the messages aloud
-needs the same spoken yes/confirm step as mac_control (the first reply only says how many are waiting).
+spoken reply; a small local buffer (last 24 h, 50 messages) is kept in DATA_DIR; and the owner-voice gate
+limits who can ask. No spoken confirmation: a request reads up to MAX_READ messages straight away.
 """
 import json
 import os
@@ -110,13 +110,12 @@ def _speak_unread(_args=None):
     batch = unread[:MAX_READ]
     _mark_read([m["id"] for m in batch])
     rest = len(unread) - len(batch)
-    spoken = " ".join(_line(m) + "." for m in batch)
+    n = len(unread)
+    spoken = f"You have {n} new WhatsApp message{'s' if n != 1 else ''}. " + " ".join(_line(m) + "." for m in batch)
     if rest:
         spoken += f" And {rest} more. Ask again to hear the rest."
     return ActionResponse(Action.RESPONSE, f"read {len(batch)} WhatsApp messages aloud", spoken)
 
-
-mac_control.register_pending_handler("whatsapp_read", _speak_unread)
 
 whatsapp_messages_desc = {
     "type": "function",
@@ -125,8 +124,8 @@ whatsapp_messages_desc = {
         "description": (
             "Check for new incoming WhatsApp messages and read them aloud. Use when the user asks 'any new "
             "WhatsApp messages?', 'read my WhatsApp' or similar. Read-only: it cannot send, reply or delete. "
-            "It first says how many are waiting and asks for spoken confirmation; after that, call "
-            "confirm_action once the user says yes. Never invent message content."
+            "It says how many are waiting, then reads up to five with sender and a short preview. "
+            "Never invent message content."
         ),
         "parameters": {"type": "object", "properties": {}, "required": []},
     },
@@ -135,12 +134,4 @@ whatsapp_messages_desc = {
 
 @register_function("whatsapp_messages", whatsapp_messages_desc, ToolType.SYSTEM_CTL)
 def whatsapp_messages(conn):
-    try:
-        unread = _refresh()
-    except (OSError, PermissionError) as e:
-        return _unavailable(e)
-    if not unread:
-        return ActionResponse(Action.RESPONSE, "no new messages", "No new WhatsApp messages.")
-    n = len(unread)
-    return mac_control._create_pending(
-        "whatsapp_read", {}, f"You have {n} new WhatsApp message{'s' if n != 1 else ''}. I would read out up to {MAX_READ}, with sender and a short preview.")
+    return _speak_unread()

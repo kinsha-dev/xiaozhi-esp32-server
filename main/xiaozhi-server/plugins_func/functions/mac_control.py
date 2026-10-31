@@ -324,7 +324,7 @@ def ask_claude(conn, task, allow_changes=False, project="trading"):
 # Mac actions
 # ---------------------------------------------------------------------------------------------
 ACTIONS = ("set_volume", "mute", "play_pause", "lock_screen", "open_app", "run_shortcut")
-CONFIRM_ACTIONS = ("lock_screen", "run_shortcut")
+CONFIRM_ACTIONS = ("run_shortcut",)  # only critical actions need the spoken yes
 
 
 def _validate(action, arg):
