@@ -15,7 +15,7 @@ from config.logger import setup_logging
 TAG = __name__
 logger = setup_logging()
 
-MODES = ("answer", "read", "open", "github", "browser")
+MODES = ("answer", "read", "open", "github", "browser", "location")
 
 
 def _fn(module, name):
@@ -40,6 +40,8 @@ web_desc = {
             "weather, prices; query = the question); "
             "read = read a specific page aloud (url, optional query = what to find in it); "
             "open = just show a page on screen, no interaction (query = address or search words); "
+            "location = remember where the user is, for 'near me' searches (query = the city), e.g. 'I'm in Dubai', "
+            "'I moved to London', 'set my location to Abu Dhabi'; "
             "github = search GitHub repos, issues, prs or code (query, optional kind, owner, open_top)."
         ),
         "parameters": {
@@ -73,12 +75,14 @@ def web(conn, mode, query=None, url=None, kind="repos", owner=None, open_top=Fal
         fn, args = _fn("browser", "read_page"), (url or q, q if url else None)
     elif mode == "open":
         fn, args = _fn("browser", "open_in_browser"), (url or q,)
+    elif mode == "location":
+        fn, args = _fn("search_web", "set_location"), (q,)
     elif mode == "github":
         fn, args = _fn("github_search", "github_search"), (q, kind, owner, bool(open_top))
     else:
         fn, args = _fn("browser_task", "browser_task"), (url, q)
     if fn is None:
         return ActionResponse(Action.RESPONSE, f"{mode} unavailable", "That web feature isn't installed.")
-    if mode != "browser" and not (q or url):
+    if mode not in ("browser", "location") and not (q or url):
         return ActionResponse(Action.RESPONSE, "empty request", "What should I look for?")
     return fn(conn, *args)

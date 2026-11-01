@@ -31,6 +31,11 @@ class WebTests(unittest.TestCase):
         out, calls = self.route("browser", url="https://www.google.com/travel/flights", query="Find flights from Dubai to Kuching on December 1st")
         self.assertEqual(calls["target"], ("search_web", "search_web"))
 
+    def test_location_mode_saves_the_place(self):
+        out, calls = self.route("location", query="Abu Dhabi")
+        self.assertEqual(calls["target"], ("search_web", "set_location"))
+        self.assertEqual(calls["args"], ("Abu Dhabi",))
+
     def test_each_mode_routes_to_its_tool(self):
         cases = [
             ("answer", {"query": "weather today"}, ("search_web", "search_web"), ("weather today",)),
