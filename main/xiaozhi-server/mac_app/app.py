@@ -42,10 +42,17 @@ def build_controller():
 
     cfg = load()
     speaker = Speaker(cfg.speaker_rate)
-    detector = WakeDetector(whisper_transcriber(), cfg.wake_phrase)
+    transcribe = whisper_transcriber()
+    if os.environ.get("MAC_APP_DEBUG"):
+        def transcribe(audio, _t=transcribe):  # noqa: F811
+            text = _t(audio)
+            print(f"[wake] heard: {text!r} peak={abs(audio).max():.3f}", flush=True)
+            return text
+    detector = WakeDetector(transcribe, cfg.wake_phrase)
     return Controller(
         cfg, speaker, detector, lambda cb: Mic(cb),
-        lambda q, on_state: Session(cfg.server_url, q, speaker, on_state), notify)
+        lambda q, on_state: Session(cfg.server_url, q, speaker, lambda st: (print(f"[session] {st}", flush=True), on_state(st))[1]
+                                    if os.environ.get("MAC_APP_DEBUG") else on_state(st)), notify)
 
 
 def main():

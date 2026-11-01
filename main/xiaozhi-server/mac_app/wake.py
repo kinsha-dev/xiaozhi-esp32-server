@@ -1,5 +1,6 @@
 """Local wake-phrase detection: VAD segmentation + a small Whisper model + fuzzy phrase match."""
 import re
+from collections import deque
 from typing import Callable, Optional
 
 import numpy as np
@@ -9,6 +10,7 @@ FRAME_MS = 30
 END_SILENCE_FRAMES = 20  # 600 ms of silence closes a segment
 MIN_SPEECH_FRAMES = 8  # shorter blips are noise
 MAX_SEGMENT_S = 3
+PREROLL_FRAMES = 10  # VAD fires late; keep 300 ms before onset so "Hi" isn't clipped
 
 _GREET = {"hi", "hey", "hay", "high", "hai"}
 _NAMES = {"bibi", "vibi", "vivi", "bebe", "bibbi", "vibe", "bibie", "vibie", "bibby", "bubi", "baby", "babi", "bobby", "bebi"}
@@ -43,17 +45,21 @@ class WakeDetector:
 
     def _reset(self):
         self._frames = []
+        self._preroll = deque(maxlen=PREROLL_FRAMES)
         self._speech = 0
         self._silence = 0
 
     def feed(self, frame: bytes) -> bool:
         """Feed one 30 ms 16 kHz int16 mono frame. True once when a finished segment matches the phrase."""
         if self._vad.is_speech(frame, RATE):
+            if not self._frames:
+                self._frames.extend(self._preroll)
             self._frames.append(frame)
             self._speech += 1
             self._silence = 0
             return False
         if not self._frames:
+            self._preroll.append(frame)
             return False
         self._frames.append(frame)
         self._silence += 1
@@ -65,6 +71,9 @@ class WakeDetector:
             return False
         pcm = np.frombuffer(b"".join(frames), dtype=np.int16)[-MAX_SEGMENT_S * RATE:]
         audio = pcm.astype(np.float32) / 32768.0
+        peak = float(np.abs(audio).max()) if len(audio) else 0.0
+        if 0 < peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
+            audio = audio * (0.5 / peak)
         return matches_wake(self._transcribe(audio), self._phrase)
 
 

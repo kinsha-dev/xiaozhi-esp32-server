@@ -68,3 +68,16 @@ def test_reset_between_segments():
     det, calls = make()
     out = feed_all(det, ([SPEECH] * 15 + [SILENCE] * 25) * 2)
     assert out.count(True) == 2
+
+
+def test_preroll_keeps_audio_before_speech_onset():
+    det, calls = make()
+    feed_all(det, [SILENCE] * 30 + [SPEECH] * 15 + [SILENCE] * 25)
+    assert len(calls[0]) >= (15 + 10) * 480  # speech + >=10 frames (300 ms) of pre-roll
+
+
+def test_quiet_audio_is_normalised_for_whisper():
+    quiet = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 300).astype(np.int16).tobytes()
+    det, calls = make()
+    feed_all(det, [quiet] * 15 + [SILENCE] * 25)
+    assert np.abs(calls[0]).max() > 0.3
