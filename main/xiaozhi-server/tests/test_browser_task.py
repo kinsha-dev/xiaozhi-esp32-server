@@ -55,6 +55,19 @@ class BrowserTaskTests(unittest.TestCase):
         self.assertIn("Done", r.response)
         self.assertIn("en.wikipedia.org", r.response)
 
+    def test_done_without_acting_is_not_success(self):
+        out = "  900 ms  0 actions  done\nhttps://gemini.google.com/app"
+        with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc(out=out)):
+            r = bt.browser_task(None, "https://gemini.google.com", "ask for food")
+        self.assertIn("couldn't finish", r.response)
+        self.assertNotIn("Done", r.response)
+
+    def test_reports_what_it_did(self):
+        out = "  900 ms  2 actions  done\ndid: Enter a prompt = pizza; Send message\nhttps://gemini.google.com/app/1"
+        with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc(out=out)):
+            r = bt.browser_task(None, "https://gemini.google.com", "ask for pizza")
+        self.assertIn("Send message", r.response)
+
     def test_rejects_bad_addresses(self):
         for url in ("http://example.com", "https://127.0.0.1", "https://localhost/x", "https://nas.local", "file:///etc/passwd", "https://192.168.1.1"):
             bt.browser_task(None, url, "open it")

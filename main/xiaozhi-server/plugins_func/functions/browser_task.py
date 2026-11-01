@@ -80,12 +80,18 @@ def _run_jev(args):
             msg = mc._shorten((err or "no output").strip().splitlines()[-1] if (err or "").strip() else "no output", 150)
             logger.bind(tag=TAG).warning(f"jev exit {proc.returncode}: {msg}")
             return ActionResponse(Action.RESPONSE, f"jev exit {proc.returncode}: {msg}", "The browser task didn't work.")
-        status = lines[-2] if len(lines) > 1 else ""
+        status = next((l for l in reversed(lines) if re.search(r"\d+ actions", l)), "")
+        did = next((l[4:].strip() for l in lines if l.startswith("did:")), "")
         final = urlparse(lines[-1])
         where = (final.hostname or "the page") + (mc._shorten(final.path, 40) if final.path not in ("", "/") else "")
-        done = "done" in status.lower() or "complete" in status.lower()
-        return ActionResponse(Action.RESPONSE, f"{status}\n{lines[-1]}",
-                              f"{'Done' if done else 'I stopped'}. I ended on {where}.")
+        acted = int((re.search(r"(\d+) actions", status) or [0, 0])[1])
+        # The agent saying DONE is not proof: with no click or typing it only looked at the page.
+        done = ("done" in status.lower() or "complete" in status.lower()) and acted > 0
+        if not done:
+            return ActionResponse(Action.RESPONSE, f"{status}\n{did}\n{lines[-1]}",
+                                  f"I couldn't finish that. I ended on {where}.")
+        return ActionResponse(Action.RESPONSE, f"{status}\n{did}\n{lines[-1]}",
+                              f"Done. {mc._shorten(did, 120)}. I ended on {where}." if did else f"Done. I ended on {where}.")
     finally:
         _busy.release()
 
