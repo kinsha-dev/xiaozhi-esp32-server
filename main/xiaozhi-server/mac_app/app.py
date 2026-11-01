@@ -51,7 +51,7 @@ def build_controller():
     detector = WakeDetector(transcribe, cfg.wake_phrase)
     return Controller(
         cfg, speaker, detector, lambda cb: Mic(cb),
-        lambda q, on_state: Session(cfg.server_url, q, speaker, lambda st: (print(f"[session] {st}", flush=True), on_state(st))[1]
+        lambda q, on_state: Session(cfg.server_url, q, speaker, idle_timeout=cfg.idle_timeout, on_state=lambda st: (print(f"[session] {st}", flush=True), on_state(st))[1]
                                     if os.environ.get("MAC_APP_DEBUG") else on_state(st)), notify)
 
 

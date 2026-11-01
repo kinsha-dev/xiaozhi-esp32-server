@@ -9,6 +9,7 @@ def test_defaults():
     assert c.wake_phrase == "hi bibi"
     assert c.data_dir == Path(__file__).resolve().parents[2] / "data"
     assert c.speaker_rate == 24000
+    assert c.idle_timeout == 300
 
 
 def test_env_overrides(tmp_path):
