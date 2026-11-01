@@ -6,6 +6,7 @@ three (name and a short description); with open_top the best match opens in the 
 https://github.com address. Queries go to GitHub, which is the point; nothing else leaves the machine.
 """
 import json
+import os
 import re
 import subprocess
 from urllib.parse import urlparse
@@ -42,7 +43,7 @@ def _describe(kind, item):
 def _open(url):
     p = urlparse(url or "")
     if p.scheme == "https" and p.hostname == "github.com":
-        mc._run(["open", url], timeout=10)
+        mc._run(["open", "-a", os.environ.get("VIBI_BROWSER", "Google Chrome"), url], timeout=10)
         return True
     return False
 

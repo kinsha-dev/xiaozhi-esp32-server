@@ -60,7 +60,7 @@ class GithubSearchTests(unittest.TestCase):
         with mock.patch.object(gs.mc, "_run", return_value=gh(REPOS)) as run:
             run.side_effect = [gh(REPOS), subprocess.CompletedProcess([], 0, "", "")]
             r = gs.github_search(None, "x", open_top=True)
-        self.assertEqual(run.call_args[0][0], ["open", "https://github.com/a/r0"])
+        self.assertEqual(run.call_args[0][0], ["open", "-a", "Google Chrome", "https://github.com/a/r0"])
         self.assertIn("Opening", r.response)
         bad = [{"fullName": "x/y", "url": "https://evil.example/x"}]
         with mock.patch.object(gs.mc, "_run", side_effect=[gh(bad)]) as run:
