@@ -1,5 +1,7 @@
 """App logic without any UI: mic -> wake detector -> Session, outbox -> Session, mute, error state."""
 import asyncio
+import atexit
+import os
 import queue
 import threading
 import time
@@ -32,13 +34,32 @@ class Controller:
         self._stop_async = None
 
     # --- lifecycle ---------------------------------------------------------------------------
+    def _flag(self):
+        return self.cfg.data_dir / "mac_app_open" if self.cfg.data_dir else None
+
+    def _announce_open(self):
+        """Presence flag: the whisper service skips the owner-voice gate while this app is running."""
+        f = self._flag()
+        if f is None:
+            return
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(str(os.getpid()))
+            atexit.register(lambda: f.unlink(missing_ok=True))
+        except OSError:
+            pass
+
     def start(self):
+        self._announce_open()
         threading.Thread(target=self._run_loop, daemon=True).start()
         threading.Thread(target=self._worker, daemon=True).start()
         self._start_mic()
 
     def stop(self):
         self._stop.set()
+        f = self._flag()
+        if f is not None:
+            f.unlink(missing_ok=True)
         self._mic.stop()
         if self._stop_async is not None:
             self._loop.call_soon_threadsafe(self._stop_async.set)
