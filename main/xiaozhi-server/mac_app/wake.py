@@ -11,7 +11,7 @@ MIN_SPEECH_FRAMES = 8  # shorter blips are noise
 MAX_SEGMENT_S = 3
 
 _GREET = {"hi", "hey", "hay", "high", "hai"}
-_NAMES = {"bibi", "vibi", "vivi", "bebe", "bibbi", "vibe", "bibie", "vibie", "bibby", "bubi"}
+_NAMES = {"bibi", "vibi", "vivi", "bebe", "bibbi", "vibe", "bibie", "vibie", "bibby", "bubi", "baby", "babi", "bobby", "bebi"}
 _PAIRS = {("bee", "bee"), ("vee", "vee"), ("be", "be"), ("bi", "bi"), ("vi", "vi")}
 
 
@@ -71,7 +71,7 @@ class WakeDetector:
 _model = None
 
 
-def whisper_transcriber(model: str = "tiny.en") -> Callable[[np.ndarray], str]:
+def whisper_transcriber(model: str = "tiny") -> Callable[[np.ndarray], str]:
     def transcribe(audio: np.ndarray) -> str:
         global _model
         if _model is None:

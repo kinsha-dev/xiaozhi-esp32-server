@@ -8,7 +8,7 @@ SPEECH = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 12000).astype(np
 SILENCE = bytes(FRAME)
 
 
-@pytest.mark.parametrize("text", ["Hi Bibi.", "hey vibi", "Hi, bee bee!", "hi vivi", "hi bibi what time is it"])
+@pytest.mark.parametrize("text", ["Hi Bibi.", "hey vibi", "Hi, bee bee!", "hi vivi", "Hi, baby.", "hi bibi what time is it"])
 def test_matches(text):
     assert matches_wake(text)
 
