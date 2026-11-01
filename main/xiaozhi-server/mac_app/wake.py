@@ -1,4 +1,5 @@
 """Local wake-phrase detection: VAD segmentation + a small Whisper model + fuzzy phrase match."""
+import os
 import re
 from collections import deque
 from typing import Callable, Optional
@@ -10,7 +11,7 @@ FRAME_MS = 30
 END_SILENCE_FRAMES = 20  # 600 ms of silence closes a segment
 MIN_SPEECH_FRAMES = 8  # shorter blips are noise
 MAX_SEGMENT_S = 3
-MIN_PEAK = 0.05  # quieter than this is room noise; do not spend Whisper time on it
+MIN_PEAK = 0.03  # quieter than this is room noise; do not spend Whisper time on it
 PREROLL_FRAMES = 10  # VAD fires late; keep 300 ms before onset so "Hi" isn't clipped
 
 _GREET = {"hi", "hey", "hay", "high", "hai"}
@@ -73,6 +74,8 @@ class WakeDetector:
         pcm = np.frombuffer(b"".join(frames), dtype=np.int16)[-MAX_SEGMENT_S * RATE:]
         audio = pcm.astype(np.float32) / 32768.0
         peak = float(np.abs(audio).max()) if len(audio) else 0.0
+        if os.environ.get("MAC_APP_DEBUG"):
+            print(f"[wake] segment {len(audio) / RATE:.1f}s peak={peak:.3f}", flush=True)
         if peak < MIN_PEAK:
             return False
         if peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
