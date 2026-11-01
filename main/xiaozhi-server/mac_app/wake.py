@@ -10,6 +10,7 @@ FRAME_MS = 30
 END_SILENCE_FRAMES = 20  # 600 ms of silence closes a segment
 MIN_SPEECH_FRAMES = 8  # shorter blips are noise
 MAX_SEGMENT_S = 3
+MIN_PEAK = 0.05  # quieter than this is room noise; do not spend Whisper time on it
 PREROLL_FRAMES = 10  # VAD fires late; keep 300 ms before onset so "Hi" isn't clipped
 
 _GREET = {"hi", "hey", "hay", "high", "hai"}
@@ -72,7 +73,9 @@ class WakeDetector:
         pcm = np.frombuffer(b"".join(frames), dtype=np.int16)[-MAX_SEGMENT_S * RATE:]
         audio = pcm.astype(np.float32) / 32768.0
         peak = float(np.abs(audio).max()) if len(audio) else 0.0
-        if 0 < peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
+        if peak < MIN_PEAK:
+            return False
+        if peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
             audio = audio * (0.5 / peak)
         return matches_wake(self._transcribe(audio), self._phrase)
 
@@ -80,13 +83,14 @@ class WakeDetector:
 _model = None
 
 
-def whisper_transcriber(model: str = "tiny") -> Callable[[np.ndarray], str]:
+def whisper_transcriber(model: str = "small") -> Callable[[np.ndarray], str]:
     def transcribe(audio: np.ndarray) -> str:
         global _model
         if _model is None:
             import whisper
 
             _model = whisper.load_model(model)
-        return _model.transcribe(audio, fp16=False, language="en", condition_on_previous_text=False)["text"]
+        return _model.transcribe(audio, fp16=False, language="en", condition_on_previous_text=False,
+                                  initial_prompt="Hi bibi. Hey bibi.")["text"]
 
     return transcribe

@@ -1,7 +1,7 @@
 # vibi Mac app
 
 Menu-bar client for the xiaozhi server: the Mac's mic and speakers instead of the ESP32 board.
-Say **"Hi bibi"** (also "hey vibi", "hi bee bee"); wake detection runs locally (VAD + Whisper `tiny`),
+Say **"Hi bibi"** (also "hey vibi", "hi bee bee"); wake detection runs locally (VAD + Whisper `small`),
 nothing leaves the Mac before the phrase. `vibi say` / reminders open a session on their own within ~4 s.
 
 Setup (server venv): `pip install -r mac_app/requirements.txt` (openai-whisper, webrtcvad, opuslib_next are

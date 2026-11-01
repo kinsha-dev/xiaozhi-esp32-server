@@ -77,7 +77,14 @@ def test_preroll_keeps_audio_before_speech_onset():
 
 
 def test_quiet_audio_is_normalised_for_whisper():
-    quiet = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 300).astype(np.int16).tobytes()
+    quiet = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 2000).astype(np.int16).tobytes()
     det, calls = make()
     feed_all(det, [quiet] * 15 + [SILENCE] * 25)
     assert np.abs(calls[0]).max() > 0.3
+
+
+def test_room_noise_is_not_transcribed():
+    noise = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 300).astype(np.int16).tobytes()
+    det, calls = make()
+    feed_all(det, [noise] * 15 + [SILENCE] * 25)
+    assert calls == []
