@@ -7,6 +7,7 @@ between five similar tools. The underlying tools keep their own safeguards; enab
 in Intent.function_call.functions, not the individual tools.
 """
 import importlib
+import re
 
 from plugins_func.register import register_function, ToolType, ActionResponse, Action
 from config.logger import setup_logging
@@ -31,11 +32,11 @@ web_desc = {
         "name": "web",
         "description": (
             "Everything on the internet. Pick a mode: "
-            "browser = USE THIS whenever the user names a website to work in or wants to browse, filter, click or "
+            "browser = USE THIS (except for flights: use answer) whenever the user names a website to work in or wants to browse, filter, click or "
             "fill something on a site ('on LinkedIn', 'go to <site> and', 'use the browser', 'filter the results', "
             "'find me a job on <site>'). An agent drives Chrome; url = the site's start page (https://...), "
             "query = the goal in plain words. It runs straight away, no confirmation. "
-            "answer = only for a plain factual lookup spoken aloud with no site named ('what is the latest', news, "
+            "answer = flights ('find flights from X to Y on <date>': put the whole request in query) and plain factual lookups spoken aloud with no site named ('what is the latest', news, "
             "weather, prices; query = the question); "
             "read = read a specific page aloud (url, optional query = what to find in it); "
             "open = just show a page on screen, no interaction (query = address or search words); "
@@ -63,6 +64,9 @@ def web(conn, mode, query=None, url=None, kind="repos", owner=None, open_top=Fal
     if mode not in MODES:
         return ActionResponse(Action.RESPONSE, "unknown mode", "I can look things up, read a page, open a page, search GitHub or use the browser. Which one?")
     q = (query or "").strip()
+    # Flight forms can't be driven reliably by the browser agent; search_web reads Google Flights results instead.
+    if mode == "browser" and re.search(r"\bflights?\b", f"{q} {url or ''}", re.I):
+        mode = "answer"
     if mode == "answer":
         fn, args = _fn("search_web", "search_web"), (q,)
     elif mode == "read":

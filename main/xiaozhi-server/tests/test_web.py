@@ -27,6 +27,10 @@ class WebTests(unittest.TestCase):
             out = w.web(None, mode, **kw)
         return out, calls
 
+    def test_flight_requests_go_to_search_not_the_form_agent(self):
+        out, calls = self.route("browser", url="https://www.google.com/travel/flights", query="Find flights from Dubai to Kuching on December 1st")
+        self.assertEqual(calls["target"], ("search_web", "search_web"))
+
     def test_each_mode_routes_to_its_tool(self):
         cases = [
             ("answer", {"query": "weather today"}, ("search_web", "search_web"), ("weather today",)),
