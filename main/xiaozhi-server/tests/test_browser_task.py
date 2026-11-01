@@ -67,6 +67,7 @@ class BrowserTaskTests(unittest.TestCase):
         with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc()) as popen:
             r = mc.confirm_action(None)
         cmd = popen.call_args[0][0]
+        self.assertIn("jev_openrouter_run.py", cmd[5])
         self.assertEqual(cmd[-4:], ["--url", "https://en.wikipedia.org", "--goal", "open the article about Godel"])
         self.assertFalse(popen.call_args[1]["shell"])
         self.assertEqual(popen.call_args[1]["env"]["BH_TELEMETRY"], "0")

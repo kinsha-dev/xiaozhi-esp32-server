@@ -111,14 +111,16 @@ Module `browser_task.py`; tool `browser_task(url, goal)`. Enable by adding `brow
 [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT) at
 `~/esp/xiaozhi-local/vendor/jev-ultrafast` (commit 8251e27, installed with `uv sync`, `uv` from Homebrew).
 
-Setup: copy `.env.example` to `.env` there (mode 600) and fill `TYPESAFE_API_KEY` (docs.typesafe.ai) and
-`TEXT_MODEL_API_KEY` (the OpenRouter key). Chrome must allow remote debugging (`browser-harness --doctor`,
+Setup: copy `.env.example` to `.env` there (mode 600) and fill `TEXT_MODEL_API_KEY` (the OpenRouter key), `TEXT_MODEL` (text helper) and optionally `JEV_CHOOSER_MODEL`
+(the action chooser: `typesafe/jev-1.13` goes to OpenRouter's `/api/alpha/decisions` endpoint, ~5 s for the Wikipedia
+test; any chat model id also works through a slower translation, ~11 s). No TypeSafe account is needed:
+`scripts/jev_openrouter_run.py` routes jev's per-step decision to OpenRouter. Chrome must allow remote debugging (`browser-harness --doctor`,
 `browser-harness mac-approve` for the macOS sheet). Browser Harness telemetry is switched off (opt-out stored in
 `~/.config/browser-harness` and `BH_TELEMETRY=0` on every run).
 
 "Open the Wikipedia article about Godel" -> the board names the site and goal and waits for a spoken yes; the agent
 then works in its own background tab of your Chrome (same signed-in profile) for at most 120 s and speaks where it
-ended. Page text goes to api.typesafe.ai and openrouter.ai. Only public https sites; goals mentioning log in, pay,
+ended. Page text goes to openrouter.ai only. Only public https sites; goals mentioning log in, pay,
 buy, send, post, delete, book, submit, download and similar are refused. Limits of jev: no iframes, canvas, uploads or
 popup tabs.
 

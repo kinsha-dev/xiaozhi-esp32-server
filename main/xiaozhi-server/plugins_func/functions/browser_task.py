@@ -2,7 +2,7 @@
 
 Tool: browser_task(url, goal). The agent opens its own background tab in the Mac's Chrome (Browser Harness over CDP),
 reads the page's controls and clicks/types toward one narrow goal, then stops. Page text goes to api.typesafe.ai and
-the text-model endpoint in the clone's .env; nothing else leaves the machine and harness telemetry is switched off.
+the OpenRouter endpoint in the clone's .env; nothing else leaves the machine and harness telemetry is switched off.
 Safety model: https public addresses only; goals about logging in, paying, buying, sending, posting, deleting,
 booking or submitting forms are refused; a spoken yes naming the site and goal is needed first; 2 minute hard limit;
 one task at a time; it shares Chrome's signed-in profile, so the refusal list is the main protection.
@@ -25,6 +25,8 @@ logger = setup_logging()
 
 JEV_DIR = Path(os.environ.get("JEV_DIR", Path.home() / "esp/xiaozhi-local/vendor/jev-ultrafast"))
 UV_BIN = os.environ.get("UV_BIN", "/opt/homebrew/bin/uv")
+# Runs jev with an OpenRouter chat model as the action chooser (TypeSafe is not used).
+RUNNER = str(Path(__file__).resolve().parents[2] / "scripts" / "jev_openrouter_run.py")
 TIMEOUT = int(os.environ.get("BROWSER_TASK_TIMEOUT", "120"))
 MAX_GOAL_CHARS = 300
 BLOCKED_GOAL = re.compile(
@@ -57,7 +59,7 @@ def _run_jev(args):
         return ActionResponse(Action.RESPONSE, "busy", "A browser task is already running.")
     try:
         env = {**os.environ, "BH_TELEMETRY": "0", "BROWSER_HARNESS_TELEMETRY": "0", "ANONYMIZED_TELEMETRY": "0"}
-        cmd = [UV_BIN, "run", "--env-file", ".env", "python", "examples/run.py", "--url", url, "--goal", goal]
+        cmd = [UV_BIN, "run", "--env-file", ".env", "python", RUNNER, "--url", url, "--goal", goal]
         try:
             proc = subprocess.Popen(cmd, cwd=str(JEV_DIR), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, shell=False, start_new_session=True)
