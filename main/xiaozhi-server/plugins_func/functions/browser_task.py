@@ -97,10 +97,12 @@ browser_task_desc = {
     "function": {
         "name": "browser_task",
         "description": (
-            "Have the browser agent carry out one narrow task on a public website in the user's Chrome, e.g. 'open "
-            "the Wikipedia article about Godel' or 'search github.com for esp32'. It cannot log in, pay, buy, send, "
-            "post or submit forms. It reads the site name and goal back and asks for a spoken yes; only then call "
-            "confirm_action. For just reading a page aloud use read_page instead."
+            "Use the browser: have the browser agent click and type on a public website in the user's Chrome, shown "
+            "on screen. Use ONLY when the user says 'use the browser', 'ask the browser', 'go to <site> and ...' or "
+            "'open <site> and find/click ...', e.g. 'use the browser to open the Wikipedia article about Godel'. "
+            "For questions the user wants answered aloud ('search the web for', 'look up', 'what is') use "
+            "search_web; for GitHub use github_search. It cannot log in, pay, buy, send, post or submit forms. It "
+            "reads the site name and goal back and asks for a spoken yes; only then call confirm_action."
         ),
         "parameters": {
             "type": "object",
