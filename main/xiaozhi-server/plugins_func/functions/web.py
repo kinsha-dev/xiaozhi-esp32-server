@@ -31,14 +31,15 @@ web_desc = {
         "name": "web",
         "description": (
             "Everything on the internet. Pick a mode: "
-            "answer = look something up and tell the user the answer aloud ('search the web for', 'look up', "
-            "'what is the latest', news, weather, prices; query = the question); "
+            "browser = USE THIS whenever the user names a website to work in or wants to browse, filter, click or "
+            "fill something on a site ('on LinkedIn', 'go to <site> and', 'use the browser', 'filter the results', "
+            "'find me a job on <site>'). An agent drives Chrome; url = the site's start page (https://...), "
+            "query = the goal in plain words. It asks for a spoken yes first, then call confirm_action. "
+            "answer = only for a plain factual lookup spoken aloud with no site named ('what is the latest', news, "
+            "weather, prices; query = the question); "
             "read = read a specific page aloud (url, optional query = what to find in it); "
-            "open = show a web page or a search on screen in the default browser (query = address or search words); "
-            "github = search GitHub repos, issues, prs or code (query, optional kind, owner, open_top); "
-            "browser = have an agent click and type on a public website in Chrome, only when the user says 'use the "
-            "browser' or 'go to <site> and ...' (url = start page, query = the goal; it asks for a spoken yes first, "
-            "then call confirm_action)."
+            "open = just show a page on screen, no interaction (query = address or search words); "
+            "github = search GitHub repos, issues, prs or code (query, optional kind, owner, open_top)."
         ),
         "parameters": {
             "type": "object",
