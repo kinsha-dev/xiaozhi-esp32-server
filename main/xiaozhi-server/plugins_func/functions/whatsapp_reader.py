@@ -8,6 +8,7 @@ limits who can ask. No spoken confirmation: a request reads up to MAX_READ messa
 """
 import json
 import os
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -135,3 +136,66 @@ whatsapp_messages_desc = {
 @register_function("whatsapp_messages", whatsapp_messages_desc, ToolType.SYSTEM_CTL)
 def whatsapp_messages(conn):
     return _speak_unread()
+
+
+VIBI = os.environ.get("VIBI_BIN", str(Path.home() / "esp/voice-note-box/bin/vibi"))
+
+
+def _clear_whatsapp():
+    """Mark every unread message as read, including notifications the collector has not delivered yet."""
+    try:
+        _refresh()
+    except OSError as e:  # collector down: still clear what is buffered
+        logger.bind(tag=TAG).warning(f"clear: inbox not refreshed: {e}")
+    with _lock:
+        buf = _load_buffer()
+        n = sum(1 for v in buf.values() if not v["read"])
+        for v in buf.values():
+            v["read"] = True
+        _save_buffer(buf)
+    return n
+
+
+def _clear_claude():
+    """Drop Claude's queued voice-box messages (`vibi clear`) so they are not read out. 0 if vibi is unavailable."""
+    if not os.path.exists(VIBI):
+        return 0
+    try:
+        out = subprocess.run([VIBI, "clear"], timeout=15, capture_output=True, text=True, shell=False).stdout
+        return int(json.loads(out).get("cleared", 0))
+    except (OSError, ValueError, subprocess.SubprocessError, AttributeError) as e:
+        logger.bind(tag=TAG).warning(f"clear: vibi clear failed: {e}")
+        return 0
+
+
+def _clear_unread():
+    wa, cl = _clear_whatsapp(), _clear_claude()
+    if not wa and not cl:
+        return ActionResponse(Action.RESPONSE, "nothing to clear", "No unread messages to clear.")
+    parts = []
+    if wa:
+        parts.append(f"{wa} WhatsApp message{'s' if wa != 1 else ''}")
+    if cl:
+        parts.append(f"{cl} Claude message{'s' if cl != 1 else ''}")
+    return ActionResponse(Action.RESPONSE, f"cleared {wa} WhatsApp and {cl} Claude messages",
+                          f"Cleared {' and '.join(parts)}.")
+
+
+clear_whatsapp_messages_desc = {
+    "type": "function",
+    "function": {
+        "name": "clear_whatsapp_messages",
+        "description": (
+            "Clear all waiting messages, WhatsApp and Claude, without reading them aloud, so they are not read "
+            "later. Use when the user says 'vibi clear messages', 'clear my messages', 'clear Claude messages' "
+            "or 'clear WhatsApp messages'. It only drops them from the reading queue; nothing is deleted from "
+            "WhatsApp."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+
+@register_function("clear_whatsapp_messages", clear_whatsapp_messages_desc, ToolType.SYSTEM_CTL)
+def clear_whatsapp_messages(conn):
+    return _clear_unread()

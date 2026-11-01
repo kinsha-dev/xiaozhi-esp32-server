@@ -75,6 +75,15 @@ class WhatsAppTests(unittest.TestCase):
         self.assertEqual(mc._pending, {})
         self.assertIn("No new", wr.whatsapp_messages(None).response)  # marked read
 
+    def test_clear_marks_all_read_without_speaking(self):
+        make_db(self.db, [(i, 1, f"P{i}", "", "hello", 100 - i) for i in range(1, 9)])
+        with mock.patch.object(wr, "_clear_claude", return_value=2):
+            r = wr.clear_whatsapp_messages(None)
+        self.assertIn("Cleared 8 WhatsApp messages and 2 Claude messages", r.response)
+        self.assertIn("No new", wr.whatsapp_messages(None).response)
+        with mock.patch.object(wr, "_clear_claude", return_value=0):
+            self.assertIn("No unread", wr.clear_whatsapp_messages(None).response)
+
     def test_cap_and_preview(self):
         make_db(self.db, [(i, 1, f"P{i}", "", "x" * 300, 100 - i) for i in range(1, 9)])
         r = wr.whatsapp_messages(None)

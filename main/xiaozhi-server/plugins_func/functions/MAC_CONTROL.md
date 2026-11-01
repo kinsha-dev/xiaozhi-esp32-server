@@ -26,7 +26,8 @@ Tests: `PYTHONPATH=. python -m unittest tests.test_mac_control` from `main/xiaoz
 
 ## whatsapp_reader plugin (read-only WhatsApp)
 
-Module `whatsapp_reader.py`; tool `whatsapp_messages`. Enable by adding `whatsapp_messages` to
+Module `whatsapp_reader.py`; tools `whatsapp_messages` and `clear_whatsapp_messages` ("vibi clear messages": marks all
+unread WhatsApp messages as read and runs `vibi clear` to drop queued Claude messages, without speaking them). Enable by adding `whatsapp_messages` to
 `Intent.function_call.functions` in `data/.config.yaml` (alongside `confirm_action`).
 
 Source: the notifications WhatsApp Desktop already shows. No WhatsApp login, no network, no unofficial API.
@@ -54,7 +55,7 @@ Setup:
    </dict></plist>
    ```
    then `launchctl load ~/Library/LaunchAgents/local.xiaozhi.whatsapp-collector.plist`.
-4. Add `whatsapp_messages` to `Intent.function_call.functions` and restart the server.
+4. Add `whatsapp_messages` and `clear_whatsapp_messages` to `Intent.function_call.functions` and restart the server.
 
 If the inbox is missing or older than 5 minutes the assistant says the collector isn't running.
 
