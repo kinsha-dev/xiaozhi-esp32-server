@@ -9,7 +9,7 @@ from mac_app.controller import Controller
 
 __all__ = ["Controller", "main"]
 
-ICONS = {"idle": "◦", "connecting": "…", "listening": "●", "thinking": "…", "speaking": "♪", "muted": "⊘", "error": "!"}
+ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "error": "vb!"}
 LABEL = "com.voicebox.macapp"
 PLIST = Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
 TEMPLATE = Path(__file__).with_name("com.voicebox.macapp.plist.template")
