@@ -43,13 +43,17 @@ class BrowserTaskTests(unittest.TestCase):
         self.p.stop()
         self.tmp.cleanup()
 
-    def test_asks_first_naming_site_and_goal(self):
-        with mock.patch.object(bt.subprocess, "Popen") as popen:
-            r = bt.browser_task(None, "https://github.com", "search for esp32")
-        self.assertFalse(popen.called)
-        self.assertIn("github.com", r.response)
-        self.assertIn("search for esp32", r.response)
-        self.assertEqual(len(mc._pending), 1)
+    def test_runs_immediately_without_confirmation(self):
+        with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc()) as popen:
+            r = bt.browser_task(None, "https://en.wikipedia.org", "open the article about Godel")
+        self.assertEqual(mc._pending, {})
+        cmd = popen.call_args[0][0]
+        self.assertIn("jev_openrouter_run.py", cmd[5])
+        self.assertEqual(cmd[-4:], ["--url", "https://en.wikipedia.org", "--goal", "open the article about Godel"])
+        self.assertFalse(popen.call_args[1]["shell"])
+        self.assertEqual(popen.call_args[1]["env"]["BH_TELEMETRY"], "0")
+        self.assertIn("Done", r.response)
+        self.assertIn("en.wikipedia.org", r.response)
 
     def test_rejects_bad_addresses(self):
         for url in ("http://example.com", "https://127.0.0.1", "https://localhost/x", "https://nas.local", "file:///etc/passwd", "https://192.168.1.1"):
@@ -62,25 +66,11 @@ class BrowserTaskTests(unittest.TestCase):
             self.assertIn("won't", r.response)
         self.assertEqual(mc._pending, {})
 
-    def test_confirm_runs_jev_safely(self):
-        bt.browser_task(None, "https://en.wikipedia.org", "open the article about Godel")
-        with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc()) as popen:
-            r = mc.confirm_action(None)
-        cmd = popen.call_args[0][0]
-        self.assertIn("jev_openrouter_run.py", cmd[5])
-        self.assertEqual(cmd[-4:], ["--url", "https://en.wikipedia.org", "--goal", "open the article about Godel"])
-        self.assertFalse(popen.call_args[1]["shell"])
-        self.assertEqual(popen.call_args[1]["env"]["BH_TELEMETRY"], "0")
-        self.assertIn("Done", r.response)
-        self.assertIn("en.wikipedia.org", r.response)
-
     def test_timeout_and_failure(self):
-        bt.browser_task(None, "https://example.com", "open the about page")
         with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc(hang=True)), mock.patch.object(bt.os, "killpg"):
-            self.assertIn("ran out of time", mc.confirm_action(None).response)
-        bt.browser_task(None, "https://example.com", "open the about page")
+            self.assertIn("ran out of time", bt.browser_task(None, "https://example.com", "open the about page").response)
         with mock.patch.object(bt.subprocess, "Popen", return_value=FakeProc(out="", err="boom", code=1)):
-            self.assertIn("didn't work", mc.confirm_action(None).response)
+            self.assertIn("didn't work", bt.browser_task(None, "https://example.com", "open the about page").response)
 
     def test_not_configured(self):
         (Path(self.tmp.name) / ".env").unlink()

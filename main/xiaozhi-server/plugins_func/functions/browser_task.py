@@ -4,7 +4,7 @@ Tool: browser_task(url, goal). The agent opens its own background tab in the Mac
 reads the page's controls and clicks/types toward one narrow goal, then stops. Page text goes to api.typesafe.ai and
 the OpenRouter endpoint in the clone's .env; nothing else leaves the machine and harness telemetry is switched off.
 Safety model: https public addresses only; goals about logging in, paying, buying, sending, posting, deleting,
-booking or submitting forms are refused; a spoken yes naming the site and goal is needed first; 2 minute hard limit;
+booking or submitting forms are refused; no spoken confirmation (the owner-voice gate on the speaker is the check); 2 minute hard limit;
 one task at a time; it shares Chrome's signed-in profile, so the refusal list is the main protection.
 """
 import ipaddress
@@ -90,8 +90,6 @@ def _run_jev(args):
         _busy.release()
 
 
-mc.register_pending_handler("browser_task", _run_jev)
-
 browser_task_desc = {
     "type": "function",
     "function": {
@@ -102,7 +100,7 @@ browser_task_desc = {
             "'open <site> and find/click ...', e.g. 'use the browser to open the Wikipedia article about Godel'. "
             "For questions the user wants answered aloud ('search the web for', 'look up', 'what is') use "
             "search_web; for GitHub use github_search. It cannot log in, pay, buy, send, post or submit forms. It "
-            "reads the site name and goal back and asks for a spoken yes; only then call confirm_action."
+            "runs straight away; do not call confirm_action."
         ),
         "parameters": {
             "type": "object",
@@ -128,6 +126,4 @@ def browser_task(conn, url, goal):
         return ActionResponse(Action.RESPONSE, "blocked goal", "I won't do that in the browser: no logins, payments, sending, posting or forms.")
     if not (JEV_DIR / ".env").exists():
         return ActionResponse(Action.RESPONSE, "jev not configured", "The browser agent isn't set up yet.")
-    host = urlparse(clean).hostname
-    return mc._create_pending("browser_task", {"url": clean, "goal": goal},
-                              f"I'm about to let the browser agent work on {host} in your Chrome with this goal: {mc._shorten(goal, 150)}.")
+    return _run_jev({"url": clean, "goal": goal})

@@ -2,7 +2,7 @@
 
 Modes: answer (search_web: look something up and speak the answer), read (read_page: read a given page),
 open (open_in_browser: show a page or a search on screen), github (github_search), browser (browser_task: an agent
-clicks through a public site in Chrome after a spoken yes). The model picks one tool and a mode instead of choosing
+clicks through a public site in Chrome, no confirmation). The model picks one tool and a mode instead of choosing
 between five similar tools. The underlying tools keep their own safeguards; enable only `web` (and `confirm_action`)
 in Intent.function_call.functions, not the individual tools.
 """
@@ -34,7 +34,7 @@ web_desc = {
             "browser = USE THIS whenever the user names a website to work in or wants to browse, filter, click or "
             "fill something on a site ('on LinkedIn', 'go to <site> and', 'use the browser', 'filter the results', "
             "'find me a job on <site>'). An agent drives Chrome; url = the site's start page (https://...), "
-            "query = the goal in plain words. It asks for a spoken yes first, then call confirm_action. "
+            "query = the goal in plain words. It runs straight away, no confirmation. "
             "answer = only for a plain factual lookup spoken aloud with no site named ('what is the latest', news, "
             "weather, prices; query = the question); "
             "read = read a specific page aloud (url, optional query = what to find in it); "

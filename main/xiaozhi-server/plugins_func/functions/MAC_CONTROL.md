@@ -129,7 +129,7 @@ Tests: `PYTHONPATH=. python -m unittest tests.test_browser_task`.
 ## web plugin (one tool for all web access)
 
 Module `web.py`; tool `web(mode, query, url, kind, owner, open_top)` with modes `answer` (search_web), `read`
-(read_page), `open` (open_in_browser), `github` (github_search) and `browser` (browser_task, spoken yes first).
+(read_page), `open` (open_in_browser), `github` (github_search) and `browser` (browser_task, no confirmation: the owner-voice gate is the check).
 Enable only `web` and `confirm_action` in `Intent.function_call.functions` and remove the individual tools from that
 list, so the model has one choice and cannot mis-route "search ..." to the browser agent. The individual modules stay
 installed; `web` calls them.
