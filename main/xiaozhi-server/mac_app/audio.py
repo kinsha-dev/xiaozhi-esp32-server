@@ -2,6 +2,7 @@
 import threading
 from typing import Callable
 
+import numpy as np
 import opuslib_next
 import sounddevice as sd
 
@@ -66,12 +67,18 @@ class Speaker:
         self._buf = bytearray()
         self._lock = threading.Lock()
         self._stream = None
+        self._level = 0.0
 
     def _callback(self, outdata, frames, t, status):
         need = frames * 2
         with self._lock:
             chunk = bytes(self._buf[:need])
             del self._buf[:need]
+        if chunk:
+            a = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+            self._level = float(np.sqrt(np.mean(a * a)))
+        else:
+            self._level = 0.0
         outdata[:] = chunk + bytes(need - len(chunk))
 
     def play(self, pcm: bytes):
@@ -89,6 +96,9 @@ class Speaker:
     def flush(self):
         with self._lock:
             self._buf.clear()
+
+    def level(self) -> float:
+        return self._level
 
     def is_busy(self) -> bool:
         with self._lock:

@@ -58,7 +58,10 @@ def build_controller():
 def main():
     import rumps
 
+    from mac_app.overlay import Overlay
+
     ctl = build_controller()
+    overlay = Overlay(ctl._speaker.level, lambda: ctl.mic_level)
 
     class MenuApp(rumps.App):
         def __init__(self):
@@ -69,12 +72,16 @@ def main():
             self.login = rumps.MenuItem("Start at Login", callback=self.on_login)
             self.login.state = login_item_enabled()
             self.menu = [self.status, self.mute, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
-            self.timer = rumps.Timer(self.refresh, 0.3)
+            self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
         def refresh(self, _):
             s = ctl.display_state()
             self.title = ICONS.get(s, ICONS["idle"])
+            try:
+                overlay.update(s)
+            except Exception as e:  # never let the overlay break the menu bar
+                print(f"[overlay] {e}", flush=True)
             self.status.title = ctl.error if ctl.error else (f"State: {s}" if s != "idle" else "Say “Hi bibi”")
 
         def on_mute(self, item):

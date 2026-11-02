@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import time
+import numpy as np
 from typing import Callable
 
 from mac_app.audio import AudioError
@@ -32,6 +33,7 @@ class Controller:
         self._stop = threading.Event()
         self._loop = asyncio.new_event_loop()
         self._stop_async = None
+        self.mic_level = 0.0
 
     # --- lifecycle ---------------------------------------------------------------------------
     def _flag(self):
@@ -98,6 +100,8 @@ class Controller:
 
     # --- audio -------------------------------------------------------------------------------
     def _on_mic(self, frame: bytes):  # audio thread
+        a = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+        self.mic_level = float(np.sqrt(np.mean(a * a))) if a.size else 0.0
         if self._active and self._sess_q is not None:
             self._loop.call_soon_threadsafe(self._push, frame)
         else:
