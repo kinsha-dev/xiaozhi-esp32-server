@@ -1361,7 +1361,7 @@ class ConnectionHandler:
                         )
                         # 超时时返回错误响应，避免整个流程卡死
                         tool_results.append((
-                            ActionResponse(action=Action.ERROR, result="哎呀，网络遇到点问题，请稍后再试下！"),
+                            ActionResponse(action=Action.ERROR, result="Sorry, that tool failed or took too long. Please try again."),
                             tool_call_data
                         ))
                         # 上报工具调用错误
@@ -1741,6 +1741,14 @@ class ConnectionHandler:
                                     f"超时关闭连接时出错: {close_error}"
                                 )
                         break
+                # The board drops the channel after 120 s without any server message, so ping it every ~30 s
+                # and let close_connection_no_voice_time alone decide when the session ends.
+                if time.time() - getattr(self, "_last_keepalive", 0) >= 30:
+                    self._last_keepalive = time.time()
+                    try:
+                        await self.websocket.send(json.dumps({"type": "keepalive"}))
+                    except Exception:
+                        pass
                 # 每10秒检查一次，避免过于频繁
                 await asyncio.sleep(10)
         except Exception as e:

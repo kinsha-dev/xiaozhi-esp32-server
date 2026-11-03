@@ -19,6 +19,17 @@ from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
 
 TAG = __name__
 
+def _vibi_wake(conn, text):
+    """Voice-box hook: on the wake word, add any pending outbox messages (reminders, Claude updates) to the
+    greeting. Never lets a fault in the plugin break the conversation."""
+    try:
+        from plugins_func.functions.vibi_outbox import wake_text
+
+        return wake_text(conn, text)
+    except Exception:
+        return text
+
+
 class ListenTextMessageHandler(TextMessageHandler):
     """Listen消息处理器"""
 
@@ -107,10 +118,10 @@ class ListenTextMessageHandler(TextMessageHandler):
                     conn.just_woken_up = True
                     # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
                     enqueue_asr_report(conn, "嘿，你好呀", [])
-                    await startToChat(conn, "嘿，你好呀")
+                    await startToChat(conn, _vibi_wake(conn, "嘿，你好呀"))
                 else:
                     conn.just_woken_up = True
                     # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
                     enqueue_asr_report(conn, original_text, [])
                     # 否则需要LLM对文字内容进行答复
-                    await startToChat(conn, original_text)
+                    await startToChat(conn, _vibi_wake(conn, original_text))

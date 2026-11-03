@@ -17,6 +17,9 @@ THINKING_DISABLED_DOMAINS = {
     "moonshot.cn": {"thinking": {"type": "disabled"}},
     "volces.com": {"thinking": {"type": "disabled"}},
     "modelarts-maas.com": {"thinking": {"type": "disabled"}},
+    # OpenRouter: reasoning models (e.g. DeepSeek v4.1) otherwise spend the whole max_tokens budget
+    # thinking and return an empty reply, which the voice device shows as silence.
+    "openrouter.ai": {"reasoning": {"enabled": False}},
 }
 
 # 域名规则的模型名豁免表: 强制思考模型不接受该参数注入(如 MaaS glm-5.3 传 thinking 必 400)
