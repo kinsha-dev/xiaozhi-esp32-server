@@ -74,6 +74,8 @@ class Controller:
         self._loop.run_forever()
 
     def _start_mic(self):
+        if self.device_mode() == "board":
+            return
         try:
             self._mic.start()
             self.error = None
@@ -102,11 +104,49 @@ class Controller:
         except (OSError, ValueError):
             return False
 
+    # --- audio device: "auto" (board when connected), "mac", "board" -----------------------------
+    def device_mode(self) -> str:
+        try:
+            m = (self.cfg.data_dir / "audio_device").read_text().strip()
+        except (OSError, AttributeError, TypeError):
+            return "auto"
+        return m if m in ("auto", "mac", "board") else "auto"
+
+    def set_device_mode(self, mode: str):
+        try:
+            (self.cfg.data_dir / "audio_device").write_text(mode)
+        except (OSError, TypeError):
+            return
+        if mode == "board":
+            self._mic.stop()
+        elif not self.muted:
+            self._start_mic()
+
+    def defer_to_board(self) -> bool:
+        m = self.device_mode()
+        return m == "board" or (m == "auto" and self.board_connected())
+
+    @property
+    def mirroring(self) -> bool:
+        return self.board_state() != "idle"
+
+    def board_state(self) -> str:
+        """The board's listening/speaking state while it is the active device, else "idle"."""
+        if not self.defer_to_board():
+            return "idle"
+        try:
+            ts, st = (self.cfg.data_dir / "board_state").read_text().split()
+            return st if time.time() - float(ts) < 3.0 else "idle"
+        except (OSError, ValueError, AttributeError, TypeError):
+            return "idle"
+
     def display_state(self) -> str:
         if self.error:
             return "error"
         if self.muted:
             return "muted"
+        if self.state == "idle":
+            return self.board_state()
         return self.state
 
     # --- audio -------------------------------------------------------------------------------
@@ -133,14 +173,14 @@ class Controller:
                 frame = self._frames.get(timeout=0.2)
             except queue.Empty:
                 continue
-            if self.muted or self._active or self.board_connected() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
+            if self.muted or self._active or self.defer_to_board() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
                 continue
             if self._detector.feed(frame):
                 self.start_session("hi bibi")
 
     # --- sessions ----------------------------------------------------------------------------
     def on_pending(self):
-        if self.board_connected():
+        if self.defer_to_board():
             return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
@@ -149,7 +189,7 @@ class Controller:
 
     def start_session(self, text: str) -> bool:
         with self._lock:
-            if self._active or self.muted or self.board_connected():
+            if self._active or self.muted or self.defer_to_board():
                 return False
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)

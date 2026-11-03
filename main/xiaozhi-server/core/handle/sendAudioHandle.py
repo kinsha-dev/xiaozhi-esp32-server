@@ -284,6 +284,10 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
     if text is None and state == "sentence_start":
         return
     message = {"type": "tts", "state": state, "session_id": conn.session_id}
+    if state in ("start", "stop"):
+        from core.utils import audio_device
+
+        audio_device.set_board_state(conn, "speaking" if state == "start" else "idle")
     if text is not None:
         message["text"] = textUtils.check_emoji(text)
 
