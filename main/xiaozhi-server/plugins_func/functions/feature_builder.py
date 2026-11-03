@@ -155,8 +155,9 @@ build_feature_desc = {
     "function": {
         "name": "build_feature",
         "description": (
-            "Have Claude build a new feature or change in a project: trading (the trading-signal desk), voicebox (the board software) or server (the XiaoZhi voice server), in the background on a separate git branch (never the live code, never pushed). Use when "
-            "the user says 'build ...', 'add a feature ...' or 'ask Claude to build ...'. Set followup true to "
+            "Have Claude build a new feature or change in a project: trading (the trading-signal desk), voicebox (the board software) or server (the XiaoZhi voice server), in the background on a separate git branch (never the live code, never pushed). Use ONLY when "
+            "the user says the exact words 'use Claude task' (heard as 'use cloud task' too) along with a build request; "
+            "plain 'add/fix/change ...' requests go to message_claude instead. Set followup true to "
             "continue the most recent build's branch with further changes. It starts immediately: the work is "
             "isolated on its own branch, so no confirmation is needed."
         ),

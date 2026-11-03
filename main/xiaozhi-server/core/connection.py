@@ -1741,6 +1741,14 @@ class ConnectionHandler:
                                     f"超时关闭连接时出错: {close_error}"
                                 )
                         break
+                # The board drops the channel after 120 s without any server message, so ping it every ~30 s
+                # and let close_connection_no_voice_time alone decide when the session ends.
+                if time.time() - getattr(self, "_last_keepalive", 0) >= 30:
+                    self._last_keepalive = time.time()
+                    try:
+                        await self.websocket.send(json.dumps({"type": "keepalive"}))
+                    except Exception:
+                        pass
                 # 每10秒检查一次，避免过于频繁
                 await asyncio.sleep(10)
         except Exception as e:

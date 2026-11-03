@@ -29,7 +29,10 @@ MAX_BUFFER = 50
 MAX_READ = 5        # messages read aloud per request
 PREVIEW_CHARS = 80  # per message
 
+ASK_WINDOW = 120  # seconds a spoken "yes" stays valid after the question
+
 _lock = threading.Lock()
+_asked_at = 0.0
 
 
 def _now():
@@ -101,18 +104,24 @@ def _unavailable(e):
         "I can't read WhatsApp notifications. The WhatsApp collector isn't running or lacks Full Disk Access.")
 
 
-def _speak_unread(_args=None):
+def _speak_unread(confirmed=False):
+    global _asked_at
     try:
         unread = _refresh()
     except (OSError, PermissionError) as e:
         return _unavailable(e)
     if not unread:
         return ActionResponse(Action.RESPONSE, "no new messages", "No new WhatsApp messages.")
+    n = len(unread)
+    if not (confirmed and _now() - _asked_at <= ASK_WINDOW):
+        _asked_at = _now()
+        return ActionResponse(Action.RESPONSE, f"asked to read {n} WhatsApp messages",
+                              f"You have {n} new WhatsApp message{'s' if n != 1 else ''}. Want me to read {'them' if n != 1 else 'it'}? Yes or no.")
+    _asked_at = 0.0
     batch = unread[:MAX_READ]
     _mark_read([m["id"] for m in batch])
-    rest = len(unread) - len(batch)
-    n = len(unread)
-    spoken = f"You have {n} new WhatsApp message{'s' if n != 1 else ''}. " + " ".join(_line(m) + "." for m in batch)
+    rest = n - len(batch)
+    spoken = " ".join(_line(m) + "." for m in batch)
     if rest:
         spoken += f" And {rest} more. Ask again to hear the rest."
     return ActionResponse(Action.RESPONSE, f"read {len(batch)} WhatsApp messages aloud", spoken)
@@ -125,17 +134,18 @@ whatsapp_messages_desc = {
         "description": (
             "Check for new incoming WhatsApp messages and read them aloud. Use when the user asks 'any new "
             "WhatsApp messages?', 'read my WhatsApp' or similar. Read-only: it cannot send, reply or delete. "
-            "It says how many are waiting, then reads up to five with sender and a short preview. "
-            "Never invent message content."
+            "FIRST call it without confirmed: it only says how many are waiting and asks yes or no. Call it again "
+            "with confirmed true ONLY after the user says yes; then it reads up to five with sender and a short "
+            "preview. On no, do not call it again. Never invent message content."
         ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
+        "parameters": {"type": "object", "properties": {"confirmed": {"type": "boolean", "description": "True only after the user answered yes."}}, "required": []},
     },
 }
 
 
 @register_function("whatsapp_messages", whatsapp_messages_desc, ToolType.SYSTEM_CTL)
-def whatsapp_messages(conn):
-    return _speak_unread()
+def whatsapp_messages(conn, confirmed=False):
+    return _speak_unread(confirmed)
 
 
 VIBI = os.environ.get("VIBI_BIN", str(Path.home() / "esp/voice-note-box/bin/vibi"))
@@ -168,16 +178,23 @@ def _clear_claude():
         return 0
 
 
+def _clear_notifications():
+    from plugins_func.functions import mac_notifications
+    return mac_notifications.clear_unread()
+
+
 def _clear_unread():
-    wa, cl = _clear_whatsapp(), _clear_claude()
-    if not wa and not cl:
+    wa, cl, nt = _clear_whatsapp(), _clear_claude(), _clear_notifications()
+    if not wa and not cl and not nt:
         return ActionResponse(Action.RESPONSE, "nothing to clear", "No unread messages to clear.")
     parts = []
     if wa:
         parts.append(f"{wa} WhatsApp message{'s' if wa != 1 else ''}")
     if cl:
         parts.append(f"{cl} Claude message{'s' if cl != 1 else ''}")
-    return ActionResponse(Action.RESPONSE, f"cleared {wa} WhatsApp and {cl} Claude messages",
+    if nt:
+        parts.append(f"{nt} notification{'s' if nt != 1 else ''}")
+    return ActionResponse(Action.RESPONSE, f"cleared {wa} WhatsApp, {cl} Claude, {nt} notifications",
                           f"Cleared {' and '.join(parts)}.")
 
 
@@ -186,7 +203,7 @@ clear_whatsapp_messages_desc = {
     "function": {
         "name": "clear_whatsapp_messages",
         "description": (
-            "Clear all waiting messages, WhatsApp and Claude, without reading them aloud, so they are not read "
+            "Clear all waiting messages, WhatsApp, Claude and Mac notifications, without reading them aloud, so they are not read "
             "later. Use when the user says 'vibi clear messages', 'clear my messages', 'clear Claude messages' "
             "or 'clear WhatsApp messages'. It only drops them from the reading queue; nothing is deleted from "
             "WhatsApp."

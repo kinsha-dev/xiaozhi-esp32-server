@@ -1,3 +1,4 @@
+import re
 import json
 import uuid
 import asyncio
@@ -54,8 +55,10 @@ async def check_direct_exit(conn: "ConnectionHandler", text):
     """检查是否有明确的退出命令"""
     _, text = remove_punctuation_and_length(text)
     cmd_exit = conn.cmd_exit
+    heard = re.sub(r"[\W_]+", "", text).lower()
     for cmd in cmd_exit:
-        if text == cmd:
+        # compare ignoring case, spaces and punctuation: "Bye." must match "bye" and "stop listening"
+        if heard == re.sub(r"[\W_]+", "", cmd).lower():
             conn.logger.bind(tag=TAG).info(f"识别到明确的退出命令: {text}")
             await send_stt_message(conn, text)
             await conn.close()

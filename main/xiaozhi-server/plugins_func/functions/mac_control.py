@@ -290,7 +290,7 @@ ask_claude_desc = {
     "function": {
         "name": "ask_claude",
         "description": (
-            "Ask Claude Code (Anthropic's Claude CLI) on the user's Mac to look at their trading-signal project and answer. Use whenever the user says 'ask Claude' (the speech recogniser often hears the name as 'cloud', 'claud' or 'clod': treat those as Claude); when they say 'ask pi' use ask_pi. "
+            "Ask Claude Code (Anthropic's Claude CLI) on the user's Mac to look at their trading-signal project and answer. Use ONLY when the user says the exact words 'use Claude task' (heard as 'use cloud task' or 'use claud task' too); 'ask Claude' alone is not enough (never for a plain request about a project or code: use message_claude for that) (the speech recogniser often hears the name as 'cloud', 'claud' or 'clod': treat those as Claude); when they say 'ask pi' use ask_pi. "
             "It can read files and run shell commands but deletion is denied. "
             "Set allow_changes true only if the user explicitly wants files edited; "
             "that will ask the user for spoken confirmation first."
