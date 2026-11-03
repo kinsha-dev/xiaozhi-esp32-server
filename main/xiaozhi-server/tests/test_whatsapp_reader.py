@@ -62,14 +62,24 @@ class WhatsAppTests(unittest.TestCase):
             p.stop()
         self.tmp.cleanup()
 
+    def read(self):
+        wr.whatsapp_messages(None)  # the question
+        return wr.whatsapp_messages(None, confirmed=True)
+
     def test_none_waiting(self):
         make_db(self.db, [(1, 2, "Other", "", "not whatsapp", 5)])
         self.assertIn("No new WhatsApp", wr.whatsapp_messages(None).response)
 
-    def test_reads_immediately_without_confirmation(self):
+    def test_asks_before_reading(self):
         make_db(self.db, [(1, 1, "Ann", "", "Dinner at eight?", 60), (2, 1, "Bob", "Team", "Running late", 30)])
-        r = wr.whatsapp_messages(None)
-        self.assertIn("2 new WhatsApp messages", r.response)
+        q = wr.whatsapp_messages(None)
+        self.assertIn("2 new WhatsApp messages", q.response)
+        self.assertIn("Yes or no", q.response)
+        self.assertNotIn("Dinner", q.response)
+        wr._asked_at = 0.0
+        self.assertIn("Yes or no", wr.whatsapp_messages(None, confirmed=True).response)  # no question asked yet
+        r = self.read()
+        self.assertIn("Ann: Dinner at eight?", r.response)
         self.assertIn("Ann: Dinner at eight?", r.response)
         self.assertIn("Bob in Team: Running late", r.response)
         self.assertEqual(mc._pending, {})
@@ -77,16 +87,16 @@ class WhatsAppTests(unittest.TestCase):
 
     def test_clear_marks_all_read_without_speaking(self):
         make_db(self.db, [(i, 1, f"P{i}", "", "hello", 100 - i) for i in range(1, 9)])
-        with mock.patch.object(wr, "_clear_claude", return_value=2):
+        with mock.patch.object(wr, "_clear_claude", return_value=2), mock.patch.object(wr, "_clear_notifications", return_value=0):
             r = wr.clear_whatsapp_messages(None)
         self.assertIn("Cleared 8 WhatsApp messages and 2 Claude messages", r.response)
         self.assertIn("No new", wr.whatsapp_messages(None).response)
-        with mock.patch.object(wr, "_clear_claude", return_value=0):
+        with mock.patch.object(wr, "_clear_claude", return_value=0), mock.patch.object(wr, "_clear_notifications", return_value=0):
             self.assertIn("No unread", wr.clear_whatsapp_messages(None).response)
 
     def test_cap_and_preview(self):
         make_db(self.db, [(i, 1, f"P{i}", "", "x" * 300, 100 - i) for i in range(1, 9)])
-        r = wr.whatsapp_messages(None)
+        r = self.read()
         self.assertEqual(r.response.count("P"), 5)
         self.assertIn("And 3 more", r.response)
         self.assertLess(len(r.response), 5 * (wr.PREVIEW_CHARS + 20) + 100)
@@ -118,7 +128,9 @@ class WhatsAppTests(unittest.TestCase):
 
     def test_no_message_content_in_llm_result(self):
         make_db(self.db, [(1, 1, "Ann", "", "private text", 5)])
-        r = wr.whatsapp_messages(None)
+        q = wr.whatsapp_messages(None)
+        self.assertNotIn("private", q.response)  # the question reveals no content
+        r = wr.whatsapp_messages(None, confirmed=True)
         self.assertIn("private text", r.response)
         self.assertNotIn("private", r.result)
 
