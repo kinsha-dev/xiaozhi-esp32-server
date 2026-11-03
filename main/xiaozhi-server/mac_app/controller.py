@@ -91,6 +91,17 @@ class Controller:
         else:
             self._start_mic()
 
+    def board_connected(self) -> bool:
+        """True while the server reports a board connected (data/board_connected = "<server pid> <count>")."""
+        if not self.cfg.data_dir:
+            return False
+        try:
+            pid, count = (self.cfg.data_dir / "board_connected").read_text().split()
+            os.kill(int(pid), 0)
+            return int(count) > 0
+        except (OSError, ValueError):
+            return False
+
     def display_state(self) -> str:
         if self.error:
             return "error"
@@ -122,13 +133,15 @@ class Controller:
                 frame = self._frames.get(timeout=0.2)
             except queue.Empty:
                 continue
-            if self.muted or self._active or self._speaker.is_busy() or time.monotonic() < self._mute_until:
+            if self.muted or self._active or self.board_connected() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
                 continue
             if self._detector.feed(frame):
                 self.start_session("hi bibi")
 
     # --- sessions ----------------------------------------------------------------------------
     def on_pending(self):
+        if self.board_connected():
+            return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
         else:
@@ -136,7 +149,7 @@ class Controller:
 
     def start_session(self, text: str) -> bool:
         with self._lock:
-            if self._active or self.muted:
+            if self._active or self.muted or self.board_connected():
                 return False
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
