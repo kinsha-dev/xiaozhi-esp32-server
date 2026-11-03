@@ -14,7 +14,7 @@ UP_FRAME_BYTES = 1920  # 60 ms of 16 kHz int16 mono
 
 class Session:
     def __init__(self, url, mic_frames: asyncio.Queue, speaker, on_state: Callable[[str], None],
-                 idle_timeout: float = 10.0, tail: float = 0.5):
+                 idle_timeout: float = 10.0, tail: float = 0.25):
         self._url = url
         self._mic = mic_frames
         self._speaker = speaker
@@ -77,9 +77,13 @@ class Session:
             if ev.kind == "stt" and self._state == "listening":
                 self._set("thinking")
             elif ev.kind == "tts" and ev.state in ("start", "sentence_start"):
+                if ev.state == "sentence_start" and hasattr(self._speaker, "speak"):
+                    self._speaker.speak(ev.text)
                 if self._state != "speaking":
                     self._set("speaking")
             elif ev.kind == "tts" and ev.state == "stop":
+                while hasattr(self._speaker, "speak") and self._speaker.is_busy():
+                    await asyncio.sleep(0.1)  # let `say` finish before we listen
                 self._mute_until = time.monotonic() + self._tail
                 await ws.send(listen_message(sid, "start"))
                 self._listening_since = time.monotonic()

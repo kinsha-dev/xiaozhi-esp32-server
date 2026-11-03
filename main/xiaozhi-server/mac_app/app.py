@@ -36,12 +36,12 @@ def set_login_item(enabled: bool):
 
 
 def build_controller():
-    from mac_app.audio import Mic, Speaker
+    from mac_app.audio import Mic, SaySpeaker, Speaker
     from mac_app.session import Session
     from mac_app.wake import WakeDetector, whisper_transcriber
 
     cfg = load()
-    speaker = Speaker(cfg.speaker_rate)
+    speaker = Speaker(cfg.speaker_rate) if os.environ.get("MAC_APP_VOICE") == "edge" else SaySpeaker(os.environ.get("MAC_APP_VOICE", ""))
     transcribe = whisper_transcriber()
     if os.environ.get("MAC_APP_DEBUG"):
         def transcribe(audio, _t=transcribe):  # noqa: F811
@@ -56,7 +56,11 @@ def build_controller():
 
 
 def main():
+    import faulthandler
+
     import rumps
+
+    faulthandler.enable()  # native crashes (PortAudio, Opus) leave a traceback in data/mac_app.log
 
     from mac_app.overlay import Overlay
 

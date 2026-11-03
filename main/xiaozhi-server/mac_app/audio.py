@@ -1,4 +1,5 @@
 """Mic capture, speaker playback and Opus codec for the Mac app."""
+import subprocess
 import threading
 from typing import Callable
 
@@ -103,3 +104,57 @@ class Speaker:
     def is_busy(self) -> bool:
         with self._lock:
             return len(self._buf) > 0
+
+
+class SaySpeaker:
+    """Speaks the server's reply text with the macOS `say` voice (MAC_APP_VOICE picks one; default is the system
+    voice) instead of playing the server's TTS audio, which is ignored."""
+
+    def __init__(self, voice: str = ""):
+        self._voice = voice
+        self._lock = threading.Lock()
+        self._queue = []
+        self._proc = None
+        self._worker = None
+
+    def play(self, pcm: bytes):  # server audio is dropped on purpose
+        pass
+
+    def speak(self, text: str):
+        text = (text or "").strip()
+        if not text:
+            return
+        with self._lock:
+            self._queue.append(text)
+            if self._worker is None:
+                self._worker = threading.Thread(target=self._run, daemon=True)
+                self._worker.start()
+
+    def _run(self):
+        while True:
+            with self._lock:
+                if not self._queue:
+                    self._worker = None
+                    return
+                text = self._queue.pop(0)
+            cmd = ["say"] + (["-v", self._voice] if self._voice else []) + ["--", text]
+            try:
+                self._proc = subprocess.Popen(cmd)
+                self._proc.wait()
+            except OSError:
+                pass
+            finally:
+                self._proc = None
+
+    def flush(self):
+        with self._lock:
+            self._queue.clear()
+        if self._proc is not None:
+            self._proc.terminate()
+
+    def is_busy(self) -> bool:
+        with self._lock:
+            return bool(self._queue) or self._worker is not None
+
+    def level(self) -> float:
+        return 0.12 if self.is_busy() else 0.0

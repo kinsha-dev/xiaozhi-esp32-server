@@ -11,7 +11,7 @@ from typing import Callable
 from mac_app.audio import AudioError
 from mac_app.outbox import watch
 
-TAIL_S = 0.5  # ignore the mic this long after our own speech / a session
+TAIL_S = 0.25  # ignore the mic this long after our own speech / a session
 
 
 class Controller:
