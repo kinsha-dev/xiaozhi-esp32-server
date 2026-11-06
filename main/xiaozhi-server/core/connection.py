@@ -20,6 +20,7 @@ from core.utils.util import (
     check_asr_update,
     filter_sensitive_info,
 )
+from core import board_heartbeat
 from typing import Dict, Any
 from collections import deque
 from core.utils.modules_initialize import (
@@ -347,6 +348,7 @@ class ConnectionHandler:
 
     async def _route_message(self, message):
         """消息路由"""
+        board_heartbeat.beat(self.device_id)
         # 检查是否已经获取到真实的绑定状态
         if not self.bind_completed_event.is_set():
             # 还没有获取到真实状态，等待直到获取到真实状态或超时
@@ -1747,6 +1749,8 @@ class ConnectionHandler:
                     self._last_keepalive = time.time()
                     try:
                         await self.websocket.send(json.dumps({"type": "keepalive"}))
+                        await asyncio.wait_for(await self.websocket.ping(), 10)  # the board's pong is the heartbeat
+                        board_heartbeat.beat(self.device_id)
                     except Exception:
                         pass
                 # 每10秒检查一次，避免过于频繁

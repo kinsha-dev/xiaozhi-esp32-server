@@ -9,7 +9,7 @@ from mac_app.controller import Controller
 
 __all__ = ["Controller", "main"]
 
-ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "error": "vb!"}
+ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "error": "vb!", "offline": "X"}
 LABEL = "com.voicebox.macapp"
 PLIST = Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
 TEMPLATE = Path(__file__).with_name("com.voicebox.macapp.plist.template")
@@ -65,7 +65,7 @@ def main():
     from mac_app.overlay import Overlay
 
     ctl = build_controller()
-    overlay = Overlay(ctl._speaker.level, lambda: ctl.mic_level)
+    overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
         def __init__(self):
@@ -75,7 +75,13 @@ def main():
             self.retry = rumps.MenuItem("Retry microphone", callback=lambda _: ctl.retry_mic())
             self.login = rumps.MenuItem("Start at Login", callback=self.on_login)
             self.login.state = login_item_enabled()
-            self.menu = [self.status, self.mute, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.devices = {m: rumps.MenuItem(t, callback=self.on_device) for m, t in
+                            (("auto", "Auto (board when connected)"), ("mac", "This Mac"), ("board", "Board"))}
+            self.device_menu = rumps.MenuItem("Audio device")
+            for it in self.devices.values():
+                self.device_menu.add(it)
+            self._show_device(ctl.device_mode())
+            self.menu = [self.status, self.mute, self.device_menu, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -86,7 +92,16 @@ def main():
                 overlay.update(s)
             except Exception as e:  # never let the overlay break the menu bar
                 print(f"[overlay] {e}", flush=True)
-            self.status.title = ctl.error if ctl.error else (f"State: {s}" if s != "idle" else "Say “Hi bibi”")
+            self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
+
+        def _show_device(self, mode):
+            for m, it in self.devices.items():
+                it.state = m == mode
+
+        def on_device(self, item):
+            mode = next(m for m, it in self.devices.items() if it is item)
+            ctl.set_device_mode(mode)
+            self._show_device(mode)
 
         def on_mute(self, item):
             item.state = not item.state

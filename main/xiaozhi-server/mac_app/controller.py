@@ -8,10 +8,13 @@ import time
 import numpy as np
 from typing import Callable
 
-from mac_app.audio import AudioError
+from mac_app import earphones
+from mac_app.audio import AudioError, refresh_devices
 from mac_app.outbox import watch
 
 TAIL_S = 0.25  # ignore the mic this long after our own speech / a session
+HEARTBEAT_TIMEOUT = 300  # seconds without a board heartbeat before the menu bar shows X
+EARPHONE_CHECK_S = 3.0  # how often to look for other audio playing; the Bluetooth check runs every 5th time
 
 
 class Controller:
@@ -34,6 +37,9 @@ class Controller:
         self._loop = asyncio.new_event_loop()
         self._stop_async = None
         self.mic_level = 0.0
+        self.earphones_active = False  # Bluetooth headset is the mic and nothing else plays: the Mac app takes over from the board
+        self._bt_input = False
+        self._earphone_tick = 0
 
     # --- lifecycle ---------------------------------------------------------------------------
     def _flag(self):
@@ -55,6 +61,7 @@ class Controller:
         self._announce_open()
         threading.Thread(target=self._run_loop, daemon=True).start()
         threading.Thread(target=self._worker, daemon=True).start()
+        threading.Thread(target=self._watch_earphones, daemon=True).start()
         self._start_mic()
 
     def stop(self):
@@ -74,6 +81,8 @@ class Controller:
         self._loop.run_forever()
 
     def _start_mic(self):
+        if self.device_mode() == "board":
+            return
         try:
             self._mic.start()
             self.error = None
@@ -91,11 +100,101 @@ class Controller:
         else:
             self._start_mic()
 
+    def board_connected(self) -> bool:
+        """True while the server reports a board connected (data/board_connected = "<server pid> <count>")."""
+        if not self.cfg.data_dir:
+            return False
+        try:
+            pid, count = (self.cfg.data_dir / "board_connected").read_text().split()
+            os.kill(int(pid), 0)
+            return int(count) > 0
+        except (OSError, ValueError):
+            return False
+
+    # --- audio device: "auto" (board when connected), "mac", "board" -----------------------------
+    def device_mode(self) -> str:
+        try:
+            m = (self.cfg.data_dir / "audio_device").read_text().strip()
+        except (OSError, AttributeError, TypeError):
+            return "auto"
+        return m if m in ("auto", "mac", "board") else "auto"
+
+    def set_device_mode(self, mode: str):
+        try:
+            (self.cfg.data_dir / "audio_device").write_text(mode)
+        except (OSError, TypeError):
+            return
+        if mode == "board":
+            self._mic.stop()
+        elif not self.muted:
+            self._start_mic()
+
+    def defer_to_board(self) -> bool:
+        m = self.device_mode()
+        return m == "board" or (m == "auto" and self.board_connected() and not self.earphones_active)
+
+    def update_earphones(self, bluetooth_input: bool, other_audio: bool):
+        """Earphones take over when a Bluetooth headset is the mic, nothing else plays on the Mac and the board is not
+        forced. Returns True when that changed (the mic and speaker then reopen on the new default devices)."""
+        active = bluetooth_input and not other_audio and self.device_mode() != "board"
+        changed = active != self.earphones_active
+        self.earphones_active = active
+        return changed
+
+    def _watch_earphones(self):
+        while not self._stop.wait(EARPHONE_CHECK_S):
+            try:
+                if self._earphone_tick % 5 == 0:
+                    self._bt_input = earphones.bluetooth_input()
+                self._earphone_tick += 1
+                other = earphones.other_audio_playing({os.getpid()}) if self._bt_input else False
+                if self.update_earphones(self._bt_input, other):
+                    self._reopen_audio()
+            except Exception:
+                pass
+
+    def _reopen_audio(self):
+        """The default mic/speaker changed (headset on or off): reopen them so they follow it."""
+        self._mic.stop()
+        refresh_devices()
+        reset = getattr(self._speaker, "reset", None)
+        if reset:
+            reset()
+        if not self.muted:
+            self._start_mic()
+
+    @property
+    def mirroring(self) -> bool:
+        return self.board_state() != "idle"
+
+    def board_state(self) -> str:
+        """The board's listening/speaking state while it is the active device, else "idle"."""
+        if not self.defer_to_board():
+            return "idle"
+        try:
+            ts, st = (self.cfg.data_dir / "board_state").read_text().split()
+            return st if time.time() - float(ts) < 3.0 else "idle"
+        except (OSError, ValueError, AttributeError, TypeError):
+            return "idle"
+
+    def board_alive(self) -> bool:
+        """False when the board has not proved it is alive (data/board_heartbeat) for HEARTBEAT_TIMEOUT seconds."""
+        if not self.cfg.data_dir:
+            return True
+        try:
+            return time.time() - float((self.cfg.data_dir / "board_heartbeat").read_text()) < HEARTBEAT_TIMEOUT
+        except (OSError, ValueError):
+            return False
+
     def display_state(self) -> str:
         if self.error:
             return "error"
+        if self.device_mode() != "mac" and not self.board_alive() and not self.earphones_active:
+            return "offline"
         if self.muted:
             return "muted"
+        if self.state == "idle":
+            return self.board_state()
         return self.state
 
     # --- audio -------------------------------------------------------------------------------
@@ -122,13 +221,15 @@ class Controller:
                 frame = self._frames.get(timeout=0.2)
             except queue.Empty:
                 continue
-            if self.muted or self._active or self._speaker.is_busy() or time.monotonic() < self._mute_until:
+            if self.muted or self._active or self.defer_to_board() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
                 continue
             if self._detector.feed(frame):
-                self.start_session("hi bibi")
+                self.start_session(getattr(self._detector, "command", "") or "hi bibi")
 
     # --- sessions ----------------------------------------------------------------------------
     def on_pending(self):
+        if self.defer_to_board():
+            return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
         else:
@@ -136,7 +237,7 @@ class Controller:
 
     def start_session(self, text: str) -> bool:
         with self._lock:
-            if self._active or self.muted:
+            if self._active or self.muted or self.defer_to_board():
                 return False
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)

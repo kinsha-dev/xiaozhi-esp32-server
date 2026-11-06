@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.connection import ConnectionHandler
+from core import confirmation_window
 from core.utils import textUtils
 from core.utils.util import audio_to_data
 from core.providers.tts.dto.dto import SentenceType
@@ -24,6 +25,9 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
     if conn.tts.tts_audio_first_sentence:
         conn.logger.bind(tag=TAG).info(f"发送第一段语音: {text}")
         conn.tts.tts_audio_first_sentence = False
+
+    if sentenceType is not SentenceType.LAST:
+        confirmation_window.note_spoken(text)  # a question: the next short answer gets an easier voice check
 
     if sentenceType == SentenceType.FIRST:
         # 同一句子的后续消息加入流控队列，其他情况立即发送
@@ -284,6 +288,10 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
     if text is None and state == "sentence_start":
         return
     message = {"type": "tts", "state": state, "session_id": conn.session_id}
+    if state in ("start", "stop"):
+        from core.utils import audio_device
+
+        audio_device.set_board_state(conn, "speaking" if state == "start" else "idle")
     if text is not None:
         message["text"] = textUtils.check_emoji(text)
 

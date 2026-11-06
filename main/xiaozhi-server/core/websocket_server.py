@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from pathlib import Path
 
 import websockets
 from config.logger import setup_logging
@@ -29,7 +31,24 @@ def _setup_websockets_logger():
 
 _setup_websockets_logger()
 
+# Boards currently connected (the Mac app, device-id "mac-app", does not count). The Mac app reads data/board_connected
+# ("<server pid> <count>") and stays silent while a board is connected, so only one device answers the wake word.
+_boards = set()
 
+
+def _publish_boards():
+    try:
+        data_dir = Path(os.environ.get("VOICE_BOX_DATA", Path.home() / "esp/voice-note-box/data"))
+        f = data_dir / "board_connected"
+        if _boards:
+            f.write_text(f"{os.getpid()} {len(_boards)}")
+        else:
+            f.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+from core import board_heartbeat
 from core.connection import ConnectionHandler
 from config.config_loader import get_config_from_api_async
 from core.auth import AuthManager, AuthenticationError
@@ -127,11 +146,21 @@ class WebSocketServer:
             self._intent,
             self,  # 传入server实例
         )
+        device_id = websocket.request.headers.get("device-id")
+        is_board = device_id != "mac-app"
+        token = object()
+        if is_board:
+            board_heartbeat.beat(device_id)
+            _boards.add(token)
+            _publish_boards()
         try:
             await handler.handle_connection(websocket)
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"处理连接时出错: {e}")
         finally:
+            if is_board:
+                _boards.discard(token)
+                _publish_boards()
             # 强制关闭连接（如果还没有关闭的话）
             try:
                 # 安全地检查WebSocket状态并关闭

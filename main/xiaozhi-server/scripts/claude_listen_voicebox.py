@@ -35,15 +35,20 @@ def register(project, session):
     (d / project.replace("/", "_")).write_text(session)
 
 
+# The voice box lives in two repos; both are just "voice box" to the user, so the repo folder names never appear as a project.
+ALIASES = {"xiaozhi-server": "voice box", "voice-note-box": "voice box"}
+
+
 def project_name(cwd):
+    name = Path(cwd).name
     try:
         common = subprocess.run(["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                 capture_output=True, text=True, timeout=5).stdout.strip()
         if common:
-            return Path(common).parent.name
+            name = Path(common).parent.name
     except (OSError, subprocess.SubprocessError):
         pass
-    return Path(cwd).name
+    return ALIASES.get(name, name)
 
 
 def main():

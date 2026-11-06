@@ -15,8 +15,14 @@ TAG = __name__
 
 
 async def handleAudioMessage(conn: "ConnectionHandler", pcm_frame):
+    from core.utils import audio_device
+
+    if audio_device.board_muted(conn):
+        return  # "This Mac" is selected in the vb menu
     # 当前片段是否有人说话
     have_voice = conn.vad.is_vad(conn, pcm_frame)
+    if have_voice and not conn.client_is_speaking:
+        audio_device.set_board_state(conn, "listening")
     # 如果设备刚刚被唤醒，短暂忽略VAD检测
     if hasattr(conn, "just_woken_up") and conn.just_woken_up:
         have_voice = False
