@@ -58,10 +58,10 @@ def test_non_matching_segment_returns_false():
     assert len(calls) == 1
 
 
-def test_long_segment_truncated_to_last_3s():
+def test_long_segment_truncated_to_last_8s():
     det, calls = make()
-    feed_all(det, [SPEECH] * 200 + [SILENCE] * 25)  # 6 s of speech
-    assert len(calls[0]) <= 3 * 16000
+    feed_all(det, [SPEECH] * 400 + [SILENCE] * 25)  # 12 s of speech
+    assert len(calls[0]) <= 8 * 16000
 
 
 def test_reset_between_segments():

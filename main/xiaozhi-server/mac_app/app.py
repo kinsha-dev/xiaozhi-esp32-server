@@ -9,7 +9,7 @@ from mac_app.controller import Controller
 
 __all__ = ["Controller", "main"]
 
-ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "error": "vb!"}
+ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "error": "vb!", "offline": "X"}
 LABEL = "com.voicebox.macapp"
 PLIST = Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
 TEMPLATE = Path(__file__).with_name("com.voicebox.macapp.plist.template")
@@ -92,7 +92,7 @@ def main():
                 overlay.update(s)
             except Exception as e:  # never let the overlay break the menu bar
                 print(f"[overlay] {e}", flush=True)
-            self.status.title = ctl.error if ctl.error else (f"State: {s}" if s != "idle" else "Say “Hi bibi”")
+            self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
 
         def _show_device(self, mode):
             for m, it in self.devices.items():

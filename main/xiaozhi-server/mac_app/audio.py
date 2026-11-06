@@ -31,6 +31,15 @@ class OpusDecoder:
         return self._dec.decode(opus, self._frame)
 
 
+def refresh_devices():
+    """Make PortAudio look at the audio devices again, so a Bluetooth headset connected after launch becomes the default."""
+    try:
+        sd._terminate()
+        sd._initialize()
+    except Exception:
+        pass
+
+
 class Mic:
     """16 kHz int16 mono capture; calls on_frame(bytes) from the audio thread for every frame_ms."""
 
@@ -98,6 +107,16 @@ class Speaker:
         with self._lock:
             self._buf.clear()
 
+    def reset(self):
+        """Close the output stream; the next play() opens it on whatever the default output is by then."""
+        stream, self._stream = self._stream, None
+        if stream is not None:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+
     def level(self) -> float:
         return self._level
 
@@ -130,13 +149,18 @@ class SaySpeaker:
                 self._worker = threading.Thread(target=self._run, daemon=True)
                 self._worker.start()
 
+    LEAD_IN = "[[slnc 450]] "  # the output device needs a moment to wake, which clipped the first words
+
     def _run(self):
+        first = True
         while True:
             with self._lock:
                 if not self._queue:
                     self._worker = None
                     return
                 text = self._queue.pop(0)
+            if first:
+                text, first = self.LEAD_IN + text, False
             cmd = ["say"] + (["-v", self._voice] if self._voice else []) + ["--", text]
             try:
                 self._proc = subprocess.Popen(cmd)

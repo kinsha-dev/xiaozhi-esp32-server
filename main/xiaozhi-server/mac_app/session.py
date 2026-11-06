@@ -1,5 +1,6 @@
 """One conversation with the xiaozhi server, speaking the same websocket protocol as the ESP32 board."""
 import asyncio
+import os
 import time
 from typing import Callable
 
@@ -74,6 +75,8 @@ class Session:
                     pass
                 continue
             ev = parse_server_message(raw)
+            if os.environ.get("MAC_APP_DEBUG") and ev.kind == "tts":
+                print(f"[tts] {ev.state} {ev.text!r} (app state {self._state})", flush=True)
             if ev.kind == "stt" and self._state == "listening":
                 self._set("thinking")
             elif ev.kind == "tts" and ev.state in ("start", "sentence_start"):
@@ -92,14 +95,25 @@ class Session:
     async def _send_mic(self, ws):
         enc = OpusEncoder(16000)
         pending = b""
+        sent = skipped = 0
+        peak = 0
+        last = time.monotonic()
         while True:
             frame = await self._mic.get()
+            if os.environ.get("MAC_APP_DEBUG") and time.monotonic() - last > 2:
+                print(f"[send] state={self._state} sent={sent} skipped={skipped} peak={peak}", flush=True)
+                peak = 0
+                sent = skipped = 0
+                last = time.monotonic()
             if self._speaker.is_busy():
                 self._mute_until = time.monotonic() + self._tail
             if self._state != "listening" or time.monotonic() < self._mute_until:
                 pending = b""
+                skipped += 1
                 continue
+            sent += 1
             pending += frame
+            peak = max(peak, int(max(abs(x) for x in memoryview(frame).cast('h')[::8])))
             if len(pending) >= UP_FRAME_BYTES:
                 chunk, pending = pending[:UP_FRAME_BYTES], pending[UP_FRAME_BYTES:]
                 await ws.send(enc.encode(chunk))
