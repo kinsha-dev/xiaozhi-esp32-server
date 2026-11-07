@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from mac_app.ble_central import BleService, ensure_bluetooth_usage
 from mac_app.config import SERVER_DIR, load
 from mac_app.controller import Controller
 
@@ -65,6 +66,9 @@ def main():
     from mac_app.overlay import Overlay
 
     ctl = build_controller()
+    ensure_bluetooth_usage()
+    ble = BleService(ctl.cfg)
+    ble.start()
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
@@ -112,6 +116,7 @@ def main():
             set_login_item(bool(item.state))
 
         def on_quit(self, _):
+            ble.stop()
             ctl.stop()
             rumps.quit_application()
 
