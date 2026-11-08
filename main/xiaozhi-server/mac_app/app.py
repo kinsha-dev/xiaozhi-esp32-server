@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from mac_app.ble_central import BleService, ensure_bluetooth_usage
 from mac_app.config import SERVER_DIR, load
 from mac_app.controller import Controller
 
@@ -65,6 +66,9 @@ def main():
     from mac_app.overlay import Overlay
 
     ctl = build_controller()
+    ensure_bluetooth_usage()
+    ble = BleService(ctl.cfg)
+    ble.start()
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
@@ -81,7 +85,15 @@ def main():
             for it in self.devices.values():
                 self.device_menu.add(it)
             self._show_device(ctl.device_mode())
-            self.menu = [self.status, self.mute, self.device_menu, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.links = {m: rumps.MenuItem(t, callback=self.on_link) for m, t in
+                          (("auto", "Auto (Wi-Fi, Bluetooth if needed)"), ("bluetooth", "Bluetooth"))}
+            self.link_menu = rumps.MenuItem("Board link")
+            for it in self.links.values():
+                self.link_menu.add(it)
+            self._show_link(ctl.board_link())
+            self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
+            self.auto.state = ctl.auto_speak()
+            self.menu = [self.status, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -103,6 +115,19 @@ def main():
             ctl.set_device_mode(mode)
             self._show_device(mode)
 
+        def _show_link(self, mode):
+            for m, it in self.links.items():
+                it.state = m == mode
+
+        def on_link(self, item):
+            mode = next(m for m, it in self.links.items() if it is item)
+            ctl.set_board_link(mode)
+            self._show_link(mode)
+
+        def on_auto(self, item):
+            item.state = not item.state
+            ctl.set_auto_speak(bool(item.state))
+
         def on_mute(self, item):
             item.state = not item.state
             ctl.set_muted(bool(item.state))
@@ -112,6 +137,7 @@ def main():
             set_login_item(bool(item.state))
 
         def on_quit(self, _):
+            ble.stop()
             ctl.stop()
             rumps.quit_application()
 

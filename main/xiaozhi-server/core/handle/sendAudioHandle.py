@@ -31,8 +31,11 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
 
     if sentenceType == SentenceType.FIRST:
         # 同一句子的后续消息加入流控队列，其他情况立即发送
+        from core.utils import audio_device
+
         if (
-            hasattr(conn, "audio_rate_controller")
+            audio_device.is_board(conn)  # the Mac app speaks from this text event, so it must never be delayed or dropped
+            and hasattr(conn, "audio_rate_controller")
             and conn.audio_rate_controller
             and getattr(conn, "audio_flow_control", {}).get("sentence_id")
             == conn.sentence_id
