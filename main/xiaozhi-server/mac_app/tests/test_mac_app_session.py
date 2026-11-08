@@ -54,7 +54,7 @@ class Harness:
             task.cancel()
 
 
-async def run_session(script, idle_timeout=5.0, tail=0.3, feed=True):
+async def run_session(script, idle_timeout=5.0, tail=0.3, feed=True, auto=False):
     h = Harness(script)
     states = []
     sp = FakeSpeaker()
@@ -70,7 +70,7 @@ async def run_session(script, idle_timeout=5.0, tail=0.3, feed=True):
 
         ft = asyncio.create_task(feeder()) if feed else None
         try:
-            await asyncio.wait_for(s.run("hi bibi"), 10)
+            await asyncio.wait_for(s.run("hi bibi", auto=auto), 10)
         finally:
             if ft:
                 ft.cancel()
@@ -155,3 +155,29 @@ async def test_connection_refused_reports_idle_without_raising():
     s = Session("ws://127.0.0.1:1/xiaozhi/v1/", asyncio.Queue(), FakeSpeaker(), states.append)
     await s.run()
     assert states == ["connecting", "idle"]
+
+
+async def test_auto_session_ends_after_speaking_when_nothing_was_asked(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICE_BOX_DATA", str(tmp_path))
+
+    async def script(ws, h):
+        await ws.send(tts("start"))
+        await ws.send(tts("stop"))
+        await asyncio.sleep(1.0)  # a normal session would now be listening; this one must have closed
+
+    h, states, _ = await run_session(script, feed=False, auto=True)
+    assert "listening" not in states and states[-1] == "idle"
+
+
+async def test_auto_session_keeps_listening_when_it_asked_a_question(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICE_BOX_DATA", str(tmp_path))
+    (tmp_path / "awaiting_reply_until").write_text(str(time.time() + 30))
+
+    async def script(ws, h):
+        await ws.send(tts("start"))
+        await ws.send(tts("stop"))
+        await asyncio.sleep(0.2)
+        await ws.close()
+
+    h, states, _ = await run_session(script, feed=False, auto=True)
+    assert "listening" in states

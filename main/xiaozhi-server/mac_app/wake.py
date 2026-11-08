@@ -14,8 +14,9 @@ MAX_SEGMENT_S = 8  # room for "hi vibi" plus a short command
 MIN_PEAK = 0.03  # quieter than this is room noise; do not spend Whisper time on it
 PREROLL_FRAMES = 10  # VAD fires late; keep 300 ms before onset so "Hi" isn't clipped
 
-_GREET = {"hi", "hey", "hay", "high", "hai"}
-_NAMES = {"bibi", "vibi", "vivi", "bebe", "bibbi", "vibe", "bibie", "vibie", "bibby", "bubi", "baby", "babi", "bobby", "bebi"}
+_GREET = {"hi", "hey", "hai"}
+# Only the ways "vibi" is really misheard. Ordinary words ("baby", "bobby", "vibe") are left out: songs and videos woke the app.
+_NAMES = {"bibi", "vibi", "vivi", "bibbi", "bibie", "vibie", "bibby", "vb"}
 _PAIRS = {("bee", "bee"), ("vee", "vee"), ("be", "be"), ("bi", "bi"), ("vi", "vi")}
 
 

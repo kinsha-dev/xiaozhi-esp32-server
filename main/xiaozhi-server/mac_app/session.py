@@ -2,6 +2,7 @@
 import asyncio
 import os
 import time
+from pathlib import Path
 from typing import Callable
 
 from websockets.asyncio.client import connect
@@ -11,6 +12,16 @@ from mac_app.protocol import detect_message, hello_message, listen_message, pars
 
 HEADERS = {"device-id": "mac-app", "client-id": "mac-app"}
 UP_FRAME_BYTES = 1920  # 60 ms of 16 kHz int16 mono
+AUTO_REPLY_IDLE_S = 20.0  # an unprompted read-out that asked a question waits this long for the answer
+
+
+def awaiting_reply() -> bool:
+    """True while the server's last spoken sentence was a question (data/awaiting_reply_until)."""
+    f = Path(os.environ.get("VOICE_BOX_DATA", Path.home() / "esp/voice-note-box/data")) / "awaiting_reply_until"
+    try:
+        return time.time() < float(f.read_text().strip())
+    except (OSError, ValueError):
+        return False
 
 
 class Session:
@@ -26,12 +37,18 @@ class Session:
         self._mute_until = 0.0
         self._listening_since = 0.0
         self._decoder = None
+        self._auto = False
 
     def _set(self, state: str):
         self._state = state
         self._on_state(state)
 
-    async def run(self, first_text: str = "hi bibi") -> None:
+    async def run(self, first_text: str = "hi bibi", auto: bool = False) -> None:
+        """auto=True: Vibi started this by itself (a queued update). It ends after speaking, unless it asked a
+        question, so room or TV speech is never taken as a command."""
+        self._auto = auto
+        if auto:
+            self._idle_timeout = min(self._idle_timeout, AUTO_REPLY_IDLE_S)
         self._set("connecting")
         try:
             async with connect(self._url, additional_headers=HEADERS, open_timeout=5, max_size=None) as ws:
@@ -88,6 +105,8 @@ class Session:
                 while hasattr(self._speaker, "speak") and self._speaker.is_busy():
                     await asyncio.sleep(0.1)  # let `say` finish before we listen
                 self._mute_until = time.monotonic() + self._tail
+                if self._auto and not awaiting_reply():
+                    return  # read-out done and nothing was asked: close, listen only for "hi vibi" again
                 await ws.send(listen_message(sid, "start"))
                 self._listening_since = time.monotonic()
                 self._set("listening")

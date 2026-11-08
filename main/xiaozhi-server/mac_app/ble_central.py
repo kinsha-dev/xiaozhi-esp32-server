@@ -33,6 +33,31 @@ def ensure_bluetooth_usage(app=Path.home() / "Applications/Vibi.app"):
     subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=False)
 
 
+LINK_COMMANDS = {"auto": "link_auto", "bluetooth": "link_bluetooth"}
+
+
+def _link_mode(data_dir) -> str:
+    try:
+        m = (Path(data_dir) / "board_link").read_text().strip()
+    except (OSError, TypeError):
+        return "auto"
+    return m if m in LINK_COMMANDS else "auto"
+
+
+def _set_connected(data_dir, connected: bool):
+    """data/board_ble holds this app's pid while the board is linked over Bluetooth (the Mac mic then stays quiet)."""
+    if not data_dir:
+        return
+    f = Path(data_dir) / "board_ble"
+    try:
+        if connected:
+            f.write_text(str(os.getpid()))
+        else:
+            f.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 class BleService:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -89,13 +114,23 @@ async def _session(client_cls, device, cfg, token: str, stop: threading.Event):
     def on_disconnect(_client):
         loop.call_soon_threadsafe(incoming.put_nowait, None)
 
-    async with client_cls(device, disconnected_callback=on_disconnect) as client:
+    client = client_cls(device, disconnected_callback=on_disconnect)
+    await asyncio.wait_for(client.connect(), 15)
+    try:
         mtu = getattr(client, "mtu_size", 0) or 23
         mtu_payload = max(20, mtu - 3)
         print(f"[ble] connected mtu={mtu} payload={mtu_payload}", flush=True)
 
+        write_lock = asyncio.Lock()
+
         async def write(data: bytes, response: bool):
-            await client.write_gatt_char(RX_UUID, data, response=response)
+            # CoreBluetooth keeps one pending future per characteristic: two writes with response at once
+            # (an ack and a forwarded server message) leave one of them waiting forever. One at a time.
+            if response:
+                async with write_lock:
+                    await asyncio.wait_for(client.write_gatt_char(RX_UUID, data, response=True), 5)
+            else:
+                await client.write_gatt_char(RX_UUID, data, response=False)
 
         async def connect(headers: dict):
             return await ws_connect(cfg.server_url, additional_headers=headers, open_timeout=5, max_size=None)
@@ -122,16 +157,39 @@ async def _session(client_cls, device, cfg, token: str, stop: threading.Event):
                     return
                 await machine.uplink(packet)
 
+        async def push_link():
+            """Send the menu's board-link choice (auto / bluetooth) to the board, now and on every change."""
+            sent = None
+            while not stop.is_set():
+                mode = _link_mode(cfg.data_dir)
+                if mode != sent:
+                    if await machine.send_system(LINK_COMMANDS[mode]):
+                        sent = mode
+                await asyncio.sleep(2.0)
+
         consumer = asyncio.create_task(consume())
+        pusher = None
         try:
-            if not await machine.send_auth():
+            if not await asyncio.wait_for(machine.send_auth(), 10):
                 print("[ble] board rejected the token", flush=True)
                 return
+            _set_connected(cfg.data_dir, True)
+            pusher = asyncio.create_task(push_link())
             await consumer
         finally:
-            consumer.cancel()
-            try:
-                await consumer
-            except (asyncio.CancelledError, Exception):
-                pass
-            await machine.close()
+            _set_connected(cfg.data_dir, False)
+            for task in (pusher, consumer):
+                if task is not None:
+                    task.cancel()
+                    await _bounded(task)
+            await _bounded(machine.close())
+    finally:
+        await _bounded(client.disconnect())
+
+
+async def _bounded(awaitable, seconds: float = 3.0):
+    """Wait for cleanup, but never forever: a dropped link must not leave the central stuck on a dead session."""
+    try:
+        await asyncio.wait_for(awaitable, seconds)
+    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+        pass

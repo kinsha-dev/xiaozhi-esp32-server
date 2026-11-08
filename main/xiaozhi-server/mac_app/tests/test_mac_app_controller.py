@@ -31,12 +31,14 @@ class FakeDetector:
 
 class FakeSession:
     runs = []
+    autos = []
 
     def __init__(self, q, on_state):
         self.on_state = on_state
 
-    async def run(self, text):
+    async def run(self, text, auto=False):
         FakeSession.runs.append(text)
+        FakeSession.autos.append(auto)
         self.on_state("listening")
         await asyncio.sleep(0.2)
         self.on_state("idle")
@@ -83,10 +85,23 @@ def test_muted_ignores_wake_and_notifies_on_pending():
     ctl.stop()
 
 
-def test_pending_opens_session_when_not_muted():
+def test_pending_does_nothing_until_hi_vibi_by_default():
     ctl, _ = make()
     ctl.on_pending()
+    time.sleep(0.4)
+    assert FakeSession.runs == []
+    ctl.stop()
+
+
+def test_pending_opens_session_when_not_muted():
+    import tempfile
+    from pathlib import Path
+    ctl, _ = make()
+    ctl.cfg.data_dir = Path(tempfile.mkdtemp())
+    ctl.set_auto_speak(True)
+    ctl.on_pending()
     assert wait(lambda: FakeSession.runs == ["hi bibi"])
+    assert FakeSession.autos[-1] is True  # started by itself: it must end after speaking
     ctl.stop()
 
 

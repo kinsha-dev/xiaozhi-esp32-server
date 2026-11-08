@@ -21,6 +21,7 @@ from core.utils.util import (
     filter_sensitive_info,
 )
 from core import board_heartbeat
+from core import board_link
 from typing import Dict, Any
 from collections import deque
 from core.utils.modules_initialize import (
@@ -236,6 +237,7 @@ class ConnectionHandler:
 
             # 启动超时检查任务
             self.timeout_task = asyncio.create_task(self._check_timeout())
+            asyncio.create_task(board_link.watch(self))
 
             # 启动AEC缓存清理任务
             self._aec_cache_cleanup_task = asyncio.create_task(self._check_aec_cache_expiry())
