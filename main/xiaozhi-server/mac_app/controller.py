@@ -59,10 +59,14 @@ class Controller:
 
     def start(self):
         self._announce_open()
+        f = self._mute_file()
+        if f is not None and f.exists():
+            self.muted = True  # Mute survives a restart
         threading.Thread(target=self._run_loop, daemon=True).start()
         threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._watch_earphones, daemon=True).start()
-        self._start_mic()
+        if not self.muted:
+            self._start_mic()
 
     def stop(self):
         self._stop.set()
@@ -93,17 +97,60 @@ class Controller:
         if not self.muted:
             self._start_mic()
 
-    def set_muted(self, muted: bool):
+    def _mute_file(self):
+        return self.cfg.data_dir / "muted" if self.cfg.data_dir else None
+
+    def sync_mute(self, every: float = 1.0):
+        """Mute is shared through data/muted so the server (board audio, spoken updates, reminders) obeys it too.
+        Picks up a change made elsewhere (panel, CLI); cheap enough to call from the UI timer."""
+        now = time.monotonic()
+        f = self._mute_file()
+        if f is None or now - getattr(self, "_mute_sync", 0.0) < every:
+            return
+        self._mute_sync = now
+        if f.exists() != self.muted:
+            self.set_muted(f.exists(), write=False)
+
+    def set_muted(self, muted: bool, write: bool = True):
         self.muted = muted
+        f = self._mute_file()
+        if write and f is not None:
+            try:
+                f.write_text("1") if muted else f.unlink(missing_ok=True)
+            except OSError:
+                pass
         if muted:
             self._mic.stop()
         else:
             self._start_mic()
 
+    def board_ble_linked(self) -> bool:
+        """True while this app holds the Bluetooth link to the board (data/board_ble = our pid)."""
+        try:
+            return int((self.cfg.data_dir / "board_ble").read_text()) == os.getpid()
+        except (OSError, ValueError, AttributeError, TypeError):
+            return False
+
+    def board_link(self) -> str:
+        try:
+            m = (self.cfg.data_dir / "board_link").read_text().strip()
+        except (OSError, AttributeError, TypeError):
+            return "auto"
+        return m if m in ("auto", "bluetooth") else "auto"
+
+    def set_board_link(self, mode: str):
+        try:
+            (self.cfg.data_dir / "board_link").write_text(mode)
+        except (OSError, TypeError):
+            pass
+
     def board_connected(self) -> bool:
-        """True while the server reports a board connected (data/board_connected = "<server pid> <count>")."""
+        """True while the server reports a board connected (data/board_connected = "<server pid> <count>"),
+        or the board is linked to this app over Bluetooth."""
         if not self.cfg.data_dir:
             return False
+        if self.board_ble_linked():
+            return True
         try:
             pid, count = (self.cfg.data_dir / "board_connected").read_text().split()
             os.kill(int(pid), 0)
@@ -187,6 +234,7 @@ class Controller:
             return False
 
     def display_state(self) -> str:
+        self.sync_mute()
         if self.error:
             return "error"
         if self.device_mode() != "mac" and not self.board_alive() and not self.earphones_active:
@@ -227,26 +275,43 @@ class Controller:
                 self.start_session(getattr(self._detector, "command", "") or "hi bibi")
 
     # --- sessions ----------------------------------------------------------------------------
+    def auto_speak(self) -> bool:
+        """Whether queued updates (Claude, phone notifications) start a session by themselves. Off by default:
+        they wait until the user says "hi vibi". Menu toggle, kept in data/mac_auto_speak."""
+        try:
+            return (self.cfg.data_dir / "mac_auto_speak").read_text().strip() == "1"
+        except (OSError, AttributeError, TypeError):
+            return False
+
+    def set_auto_speak(self, on: bool):
+        try:
+            (self.cfg.data_dir / "mac_auto_speak").write_text("1" if on else "0")
+        except (OSError, TypeError):
+            pass
+
     def on_pending(self):
         if self.defer_to_board():
             return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
+        elif not self.auto_speak():
+            return  # waits for "hi vibi"; the server adds the waiting updates to that wake
         else:
-            self.start_session("hi bibi")
+            self.start_session("hi bibi", auto=True)
 
-    def start_session(self, text: str) -> bool:
+    def start_session(self, text: str, auto: bool = False, force: bool = False) -> bool:
         with self._lock:
-            if self._active or self.muted or self.defer_to_board():
+            if self._active or self.muted or (self.defer_to_board() and not force):  # force: Vibi Ctrl rerun
                 return False
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
-        asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q), self._loop)
+        asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto), self._loop)
         return True
 
-    async def _run_session(self, text, q):
+    async def _run_session(self, text, q, auto=False):
         try:
-            await self._session_factory(q, self._set_state).run(text)
+            session = self._session_factory(q, self._set_state)
+            await (session.run(text, auto=True) if auto else session.run(text))
         finally:
             self._mute_until = time.monotonic() + TAIL_S
             self._active = False
