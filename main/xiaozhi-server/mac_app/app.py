@@ -1,4 +1,5 @@
 """Menu-bar app: `python -m mac_app`."""
+import json
 import os
 import subprocess
 import sys
@@ -69,13 +70,18 @@ def main():
     ensure_bluetooth_usage()
     ble = BleService(ctl.cfg)
     ble.start()
+    from mac_app.ctrl import CtrlPanel, register_hotkeys
+
+    panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
+                      quit_app=lambda: rumps.quit_application(), set_muted=lambda on: ctl.set_muted(on))
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
         def __init__(self):
             super().__init__("vibi", title=ICONS["idle"], quit_button=None)
             self.status = rumps.MenuItem("Say “Hi bibi”")
-            self.mute = rumps.MenuItem("Mute", callback=self.on_mute)
+            self.mute = rumps.MenuItem("Mute (board and Mac)", callback=self.on_mute)
+            self.mute.state = ctl.muted
             self.retry = rumps.MenuItem("Retry microphone", callback=lambda _: ctl.retry_mic())
             self.login = rumps.MenuItem("Start at Login", callback=self.on_login)
             self.login.state = login_item_enabled()
@@ -93,13 +99,15 @@ def main():
             self._show_link(ctl.board_link())
             self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
             self.auto.state = ctl.auto_speak()
-            self.menu = [self.status, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
+            self.menu = [self.status, self.ctrl, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
         def refresh(self, _):
             s = ctl.display_state()
             self.title = ICONS.get(s, ICONS["idle"])
+            self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
             try:
                 overlay.update(s)
             except Exception as e:  # never let the overlay break the menu bar
@@ -142,4 +150,10 @@ def main():
             rumps.quit_application()
 
     ctl.start()
+    armed = register_hotkeys(panel.open)
+    print(f"[ctrl] hotkeys: {armed}", flush=True)
+    try:  # the log can be hard to find: leave the result where the panel/support can read it
+        (ctl.cfg.data_dir / "ctrl_hotkeys.json").write_text(json.dumps({"pid": os.getpid(), "armed": armed}))
+    except OSError:
+        pass
     MenuApp().run()

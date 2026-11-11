@@ -111,6 +111,13 @@ class Dialogue:
                 "{{current_time}}", datetime.now().strftime("%H:%M")
             )
 
+            try:  # spoken style (plain/flirty) from data/voice_style, applied every turn
+                from plugins_func.functions import voice_style
+
+                full_prompt = voice_style.apply(full_prompt)
+            except Exception:
+                full_prompt = full_prompt.replace("<<VOICE_STYLE>>", "")
+
             # 填充记忆
             if memory_str is not None:
                 full_prompt = re.sub(

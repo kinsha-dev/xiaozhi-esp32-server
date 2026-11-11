@@ -104,12 +104,17 @@ def refresh_once():
 
 def main(argv):
     once = "--once" in argv
+    misses = 0
     while True:
         try:
             refresh_once()
+            misses = 0
         except OSError as e:
             print(f"whatsapp_collector: {e}", file=sys.stderr)
             if once:
+                return 1
+            misses += 1
+            if misses >= 3:  # access to the database is sometimes lost until the process restarts: let launchd restart it
                 return 1
         if once:
             return 0

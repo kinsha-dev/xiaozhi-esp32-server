@@ -59,10 +59,14 @@ class Controller:
 
     def start(self):
         self._announce_open()
+        f = self._mute_file()
+        if f is not None and f.exists():
+            self.muted = True  # Mute survives a restart
         threading.Thread(target=self._run_loop, daemon=True).start()
         threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._watch_earphones, daemon=True).start()
-        self._start_mic()
+        if not self.muted:
+            self._start_mic()
 
     def stop(self):
         self._stop.set()
@@ -93,8 +97,28 @@ class Controller:
         if not self.muted:
             self._start_mic()
 
-    def set_muted(self, muted: bool):
+    def _mute_file(self):
+        return self.cfg.data_dir / "muted" if self.cfg.data_dir else None
+
+    def sync_mute(self, every: float = 1.0):
+        """Mute is shared through data/muted so the server (board audio, spoken updates, reminders) obeys it too.
+        Picks up a change made elsewhere (panel, CLI); cheap enough to call from the UI timer."""
+        now = time.monotonic()
+        f = self._mute_file()
+        if f is None or now - getattr(self, "_mute_sync", 0.0) < every:
+            return
+        self._mute_sync = now
+        if f.exists() != self.muted:
+            self.set_muted(f.exists(), write=False)
+
+    def set_muted(self, muted: bool, write: bool = True):
         self.muted = muted
+        f = self._mute_file()
+        if write and f is not None:
+            try:
+                f.write_text("1") if muted else f.unlink(missing_ok=True)
+            except OSError:
+                pass
         if muted:
             self._mic.stop()
         else:
@@ -210,6 +234,7 @@ class Controller:
             return False
 
     def display_state(self) -> str:
+        self.sync_mute()
         if self.error:
             return "error"
         if self.device_mode() != "mac" and not self.board_alive() and not self.earphones_active:
@@ -274,9 +299,9 @@ class Controller:
         else:
             self.start_session("hi bibi", auto=True)
 
-    def start_session(self, text: str, auto: bool = False) -> bool:
+    def start_session(self, text: str, auto: bool = False, force: bool = False) -> bool:
         with self._lock:
-            if self._active or self.muted or self.defer_to_board():
+            if self._active or self.muted or (self.defer_to_board() and not force):  # force: Vibi Ctrl rerun
                 return False
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)

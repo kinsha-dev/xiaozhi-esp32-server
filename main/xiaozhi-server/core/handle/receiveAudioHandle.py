@@ -47,6 +47,10 @@ async def resume_vad_detection(conn: "ConnectionHandler"):
 
 
 async def startToChat(conn: "ConnectionHandler", text):
+    from core.utils import audio_device
+
+    if audio_device.is_board(conn) and audio_device.muted():
+        return  # Mute is on: no ASR result, LLM or TTS reply for the board
     # 检查输入是否是JSON格式（包含说话人信息）
     speaker_name = None
     actual_text = text
@@ -73,6 +77,14 @@ async def startToChat(conn: "ConnectionHandler", text):
                 actual_text = data["content"]
     except (json.JSONDecodeError, KeyError):
         # 如果解析失败，继续使用原始文本
+        pass
+
+    try:  # history for the Vibi Ctrl panel
+        from plugins_func.functions import history_log as _hl
+        if actual_text and actual_text.strip():
+            _hl.record("command", said=_hl.clean(json.loads(actual_text).get("content", actual_text)
+                                                 if actual_text.strip().startswith("{") else actual_text), source="voice")
+    except Exception:
         pass
 
     # 保存说话人信息到连接对象

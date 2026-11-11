@@ -6,6 +6,8 @@ on connect and whenever the file changes. Over Bluetooth the Mac relay sends the
 import asyncio
 import json
 import os
+import time
+
 from pathlib import Path
 
 from core.utils import audio_device
@@ -24,6 +26,19 @@ def read_mode() -> str:
     except OSError:
         return "auto"
     return m if m in COMMANDS else "auto"
+
+
+def silent() -> bool:
+    """True while silent mode is on (data/silent_until holds an epoch time in the future)."""
+    try:
+        return float((_file().parent / "silent_until").read_text().strip()) > time.time()
+    except (OSError, ValueError):
+        return False
+
+
+def probe_body() -> str:
+    """Body of GET /xiaozhi/link: the link mode, plus "silent" while silent mode is on and "muted" while Mute is on (the board shows both)."""
+    return read_mode() + (" silent" if silent() else "") + (" muted" if audio_device.muted() else "")
 
 
 def message(mode: str) -> str:
