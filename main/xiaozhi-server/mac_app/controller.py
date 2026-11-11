@@ -235,9 +235,9 @@ class Controller:
         else:
             self.start_session("hi bibi")
 
-    def start_session(self, text: str) -> bool:
+    def start_session(self, text: str, force: bool = False) -> bool:
         with self._lock:
-            if self._active or self.muted or self.defer_to_board():
+            if self._active or self.muted or (self.defer_to_board() and not force):  # force: Vibi Ctrl rerun
                 return False
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)

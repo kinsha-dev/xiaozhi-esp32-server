@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vibi Ctrl</title>
+<style>
+:root{--bg:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--card:#f5f5f7;--ok:#1a9f4b;--bad:#d92d20;--warn:#b54708;--acc:#0a63d6}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#f2f2f4;--mut:#9a9aa1;--line:#2c2c30;--card:#1f1f23;--ok:#3ddc84;--bad:#ff6b5e;--warn:#ffb454;--acc:#6aa8ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 -apple-system,system-ui,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg)}
+h1{font-size:16px;margin:0 12px 0 0}nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;color:var(--mut);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer}
+nav button.on{background:var(--card);color:var(--fg);font-weight:600}
+main{padding:16px 20px;max-width:980px;margin:auto}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:500;font-size:12px}td.t{white-space:nowrap;color:var(--mut)}td.d{color:var(--mut);font-size:12px;word-break:break-word}
+.pill{padding:1px 8px;border-radius:99px;font-size:12px;background:var(--card)}.ok{color:var(--ok)}.error,.bad{color:var(--bad)}.warn{color:var(--warn)}
+button.act{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:4px 10px;border-radius:8px;cursor:pointer}
+button.act:hover{border-color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.card{background:var(--card);border-radius:12px;padding:14px}.card h3{margin:0 0 6px;font-size:14px;display:flex;justify-content:space-between}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--bad)}.dot.on{background:var(--ok)}
+.err{color:var(--bad);font-size:12px;margin-top:6px;word-break:break-word}.meta{color:var(--mut);font-size:12px}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:10px;display:none}
+.empty{color:var(--mut);padding:24px;text-align:center}
+@media(max-width:600px){td.d{display:none}}
+</style></head><body>
+<header><h1>Vibi Ctrl</h1><nav id="nav"></nav></header>
+<main id="main"></main><div id="toast"></div>
+<script>
+const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["components","Components"]];
+let tab=localStorage.getItem("vctrlTab")||"actions",timer;
+const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
+function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
+function nav(){$("#nav").innerHTML=TABS.map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
+function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
+async function load(){
+  if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
+  <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
+  const rows=await api("/api/history?kind="+tab);
+  $("#main").innerHTML=rows.length?`<table><tr><th>Time</th><th>${tab=="actions"?"Action":"Entry"}</th><th>Status</th><th>Result</th><th></th></tr>`+rows.map(r=>`<tr><td class="t">${esc(r.time)}</td>
+  <td>${esc(r.title)}${r.risky?' <span class="pill warn">asks first</span>':""}${r.source?`<div class="meta">${esc(r.source)}</div>`:""}</td><td><span class="pill ${r.status=="error"?"error":r.status=="ok"||r.status=="done"?"ok":""}">${esc(r.status)}</span></td>
+  <td class="d">${esc(r.detail)}</td><td>${r.rerun?`<button class="act" onclick="rerun('${esc(r.id)}',${r.risky})">Rerun</button>`:""}</td></tr>`).join("")+"</table>":'<div class="empty">Nothing yet. New voice requests show up here.</div>'}
+async function rerun(id,risky){if(risky&&!confirm("This is a risky kind of action. Vibi will speak the details and wait for your spoken yes before doing anything. Continue?"))return;const r=await api("/api/rerun",{kind:tab,id});toast(r.note||r.error)}
+async function restart(k,n){if(!confirm("Restart "+n+"?"))return;const r=await api("/api/restart",{key:k});toast(r.ok?(r.note||n+" restarting"):"Failed: "+r.error);setTimeout(load,3000)}
+nav();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
+</script></body></html>

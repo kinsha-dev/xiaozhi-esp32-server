@@ -95,11 +95,24 @@ class ToolManager:
             self.logger.info(f"执行工具: {tool_name}，参数: {arguments}")
             result = await executor.execute(self.conn, tool_name, arguments)
             self.logger.debug(f"工具执行结果: {result}")
+            self._record_history(tool_name, arguments, result)
             return result
 
         except Exception as e:
             self.logger.error(f"执行工具 {tool_name} 时出错: {e}")
             return ActionResponse(action=Action.ERROR, response=str(e))
+
+    def _record_history(self, tool_name, arguments, result):
+        """Append the call to data/history.jsonl for the Vibi Ctrl panel (never raises)."""
+        try:
+            from plugins_func.functions import history_log as hl
+            act = getattr(getattr(result, "action", None), "name", "")
+            bad = act in ("ERROR", "NOTFOUND")
+            text = getattr(result, "response", None) or getattr(result, "result", None) or ""
+            hl.record("action", tool_name, said=hl.last_user_text(self.conn), args=arguments,
+                      status="error" if bad else "ok", result=text)
+        except Exception:
+            pass
 
     def get_supported_tool_names(self) -> List[str]:
         """获取所有支持的工具名称"""

@@ -75,6 +75,14 @@ async def startToChat(conn: "ConnectionHandler", text):
         # 如果解析失败，继续使用原始文本
         pass
 
+    try:  # history for the Vibi Ctrl panel
+        from plugins_func.functions import history_log as _hl
+        if actual_text and actual_text.strip():
+            _hl.record("command", said=_hl.clean(json.loads(actual_text).get("content", actual_text)
+                                                 if actual_text.strip().startswith("{") else actual_text), source="voice")
+    except Exception:
+        pass
+
     # 保存说话人信息到连接对象
     if speaker_name:
         conn.current_speaker = speaker_name

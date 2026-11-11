@@ -69,6 +69,10 @@ def main():
     ensure_bluetooth_usage()
     ble = BleService(ctl.cfg)
     ble.start()
+    from mac_app.ctrl import CtrlPanel, register_hotkey
+
+    panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
+                      quit_app=lambda: rumps.quit_application())
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
@@ -85,7 +89,8 @@ def main():
             for it in self.devices.values():
                 self.device_menu.add(it)
             self._show_device(ctl.device_mode())
-            self.menu = [self.status, self.mute, self.device_menu, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I)", callback=lambda _: panel.open())
+            self.menu = [self.status, self.ctrl, self.mute, self.device_menu, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -121,4 +126,6 @@ def main():
             rumps.quit_application()
 
     ctl.start()
+    if not register_hotkey(panel.open):
+        print("[ctrl] Ctrl+I hotkey unavailable; use the menu item", flush=True)
     MenuApp().run()
