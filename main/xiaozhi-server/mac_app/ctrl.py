@@ -22,9 +22,10 @@ ALT_MODS = 0x1000 | 0x800  # Ctrl+Option, a fallback when Ctrl+I is taken or unr
 
 
 class CtrlPanel:
-    def __init__(self, data_dir, server_dir, rerun, quit_app=lambda: None):
+    def __init__(self, data_dir, server_dir, rerun, quit_app=lambda: None, set_muted=None):
         """rerun(text) -> bool: replays `text` as a fresh voice turn (so the usual spoken confirmation applies)."""
         self.data_dir, self.server_dir, self._rerun, self._quit = Path(data_dir), Path(server_dir), rerun, quit_app
+        self._set_muted = set_muted
         self.token = secrets.token_urlsafe(16)
         self.httpd = None
         self.port = None
@@ -44,6 +45,9 @@ class CtrlPanel:
                 data = be.components(self.data_dir, self.server_dir)
             elif path == "/api/restart" and method == "POST":
                 data = be.restart(str(body.get("key", "")), relaunch=self._relaunch)
+            elif path == "/api/mute" and method == "POST" and self._set_muted:
+                self._set_muted(bool(body.get("on")))
+                data = {"ok": True, "muted": bool(body.get("on"))}
             elif path == "/api/rerun" and method == "POST":
                 data = self.do_rerun(str(body.get("kind", "")), str(body.get("id", "")))
             else:

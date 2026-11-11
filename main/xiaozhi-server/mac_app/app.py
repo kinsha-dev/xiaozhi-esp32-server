@@ -73,14 +73,15 @@ def main():
     from mac_app.ctrl import CtrlPanel, register_hotkeys
 
     panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
-                      quit_app=lambda: rumps.quit_application())
+                      quit_app=lambda: rumps.quit_application(), set_muted=lambda on: ctl.set_muted(on))
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
         def __init__(self):
             super().__init__("vibi", title=ICONS["idle"], quit_button=None)
             self.status = rumps.MenuItem("Say “Hi bibi”")
-            self.mute = rumps.MenuItem("Mute", callback=self.on_mute)
+            self.mute = rumps.MenuItem("Mute (board and Mac)", callback=self.on_mute)
+            self.mute.state = ctl.muted
             self.retry = rumps.MenuItem("Retry microphone", callback=lambda _: ctl.retry_mic())
             self.login = rumps.MenuItem("Start at Login", callback=self.on_login)
             self.login.state = login_item_enabled()
@@ -98,6 +99,7 @@ def main():
         def refresh(self, _):
             s = ctl.display_state()
             self.title = ICONS.get(s, ICONS["idle"])
+            self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
             try:
                 overlay.update(s)
             except Exception as e:  # never let the overlay break the menu bar

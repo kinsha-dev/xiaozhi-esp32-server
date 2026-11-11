@@ -145,9 +145,13 @@ def components(data_dir: Path, server_dir: Path, status=launchd_status, now=time
     online = age is not None and age < 300
     parts = [f"link: {link}", "BLE linked" if ble and _alive(ble) else "Wi-Fi/auto",
              f"heartbeat {int(age)}s ago" if age is not None else "no heartbeat"]
+    muted = (d / "muted").exists()
+    if muted:
+        parts.insert(0, "MUTED (board and Mac are off)")
     if silent and silent.replace(".", "", 1).isdigit() and float(silent) > now():
         parts.append("SILENT until " + datetime.fromtimestamp(float(silent)).strftime("%H:%M"))
     add("board", "Board link", online, "", ", ".join(parts))
+    out[-1]["muted"] = muted
     # notification collector: runs inside the voice server; status.json holds its last problem
     st = {}
     try:
