@@ -23,7 +23,7 @@ button.act:hover{border-color:var(--acc)}
 .empty{color:var(--mut);padding:24px;text-align:center}
 @media(max-width:600px){td.d{display:none}}
 </style></head><body>
-<header><h1>Vibi Ctrl</h1><nav id="nav"></nav></header>
+<header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
 const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["components","Components"]];
@@ -43,5 +43,7 @@ async function load(){
 async function rerun(id,risky){if(risky&&!confirm("This is a risky kind of action. Vibi will speak the details and wait for your spoken yes before doing anything. Continue?"))return;const r=await api("/api/rerun",{kind:tab,id});toast(r.note||r.error)}
 async function mute(on){await api("/api/mute",{on});toast(on?"Muted: board and Mac are off":"Unmuted");load()}
 async function restart(k,n){if(!confirm("Restart "+n+"?"))return;const r=await api("/api/restart",{key:k});toast(r.ok?(r.note||n+" restarting"):"Failed: "+r.error);setTimeout(load,3000)}
-nav();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
+async function loadStyle(){const s=await api("/api/style");$("#style").innerHTML=s.styles.map(x=>`<option ${x==s.style?"selected":""}>${x}</option>`).join("")}
+async function setStyle(v){const r=await api("/api/style",{style:v});toast("Voice style: "+r.style+(r.error?" ("+r.error+")":""))}
+nav();loadStyle();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
 </script></body></html>

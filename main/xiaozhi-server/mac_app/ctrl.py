@@ -45,6 +45,10 @@ class CtrlPanel:
                 data = be.components(self.data_dir, self.server_dir)
             elif path == "/api/restart" and method == "POST":
                 data = be.restart(str(body.get("key", "")), relaunch=self._relaunch)
+            elif path == "/api/style" and method == "GET":
+                data = {"style": be.get_style(self.data_dir), "styles": list(be.STYLES)}
+            elif path == "/api/style" and method == "POST":
+                data = {"style": be.set_style(self.data_dir, str(body.get("style", "")))}
             elif path == "/api/mute" and method == "POST" and self._set_muted:
                 self._set_muted(bool(body.get("on")))
                 data = {"ok": True, "muted": bool(body.get("on"))}

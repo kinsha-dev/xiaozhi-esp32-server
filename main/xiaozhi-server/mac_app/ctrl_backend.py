@@ -76,6 +76,23 @@ def find_rerun(data_dir: Path, kind: str, id_: str):
     return None
 
 
+# --- voice style (shared with the server through data/voice_style) -------------------------------
+STYLES = ("flirty", "plain")
+
+
+def get_style(data_dir: Path) -> str:
+    s = _read(Path(data_dir) / "voice_style").lower()
+    return s if s in STYLES else "flirty"
+
+
+def set_style(data_dir: Path, style: str) -> str:
+    style = (style or "").strip().lower()
+    if style not in STYLES:
+        raise ValueError("style must be flirty or plain")
+    (Path(data_dir) / "voice_style").write_text(style)
+    return style
+
+
 # --- components --------------------------------------------------------------------------------
 def _run(cmd, timeout=5) -> str:
     try:

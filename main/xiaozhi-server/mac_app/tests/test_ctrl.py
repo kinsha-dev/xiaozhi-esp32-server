@@ -73,3 +73,12 @@ def test_panel_api_and_rerun(tmp_path):
     r = json.loads(body)
     assert r["ok"] and r["risky"] and said == ["open safari"]  # replayed as a voice turn, so the spoken yes still applies
     assert not json.loads(p.handle("POST", "/api/rerun", {"t": p.token}, {"kind": "commands", "id": "i1"})[2])["ok"]
+
+
+def test_style_get_set_and_api(tmp_path):
+    assert be.get_style(tmp_path) == "flirty"  # default
+    p = CtrlPanel(tmp_path, tmp_path, lambda t: True)
+    _, _, body = p.handle("POST", "/api/style", {"t": p.token}, {"style": "plain"})
+    assert json.loads(body)["style"] == "plain" and (tmp_path / "voice_style").read_text() == "plain"
+    assert json.loads(p.handle("GET", "/api/style", {"t": p.token})[2])["style"] == "plain"
+    assert p.handle("POST", "/api/style", {"t": p.token}, {"style": "rude"})[0] == 500
