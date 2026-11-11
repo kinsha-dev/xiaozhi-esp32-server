@@ -178,7 +178,7 @@ class Controller:
 
     def defer_to_board(self) -> bool:
         m = self.device_mode()
-        return m == "board" or (m == "auto" and self.board_connected() and not self.earphones_active)
+        return m == "board" or (m == "auto" and self.board_connected())
 
     def update_earphones(self, bluetooth_input: bool, other_audio: bool):
         """Earphones take over when a Bluetooth headset is the mic, nothing else plays on the Mac and the board is not
