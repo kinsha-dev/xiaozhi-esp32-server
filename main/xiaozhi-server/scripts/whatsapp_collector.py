@@ -306,12 +306,23 @@ def _write(path, msgs, **extra):
 
 def refresh_once():
     cutoff = time.time() - MAX_AGE
-    msgs = [m for m in fetch() if m["ts"] >= cutoff][:MAX_MESSAGES]
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _write(INBOX, msgs)
-    allm = [m for m in fetch_all() + mail_rows_cached() if m["ts"] >= cutoff]
+    try:
+        msgs = [m for m in fetch() if m["ts"] >= cutoff][:MAX_MESSAGES]
+        _write(INBOX, msgs)
+        others = fetch_all()
+        db_error = None
+    except OSError as e:  # notification DB access denied: mail (Gmail API) must still come through
+        msgs, db_error = [], e
+        try:
+            others = [m for m in json.loads(ALL_INBOX.read_text()).get("messages", []) if m.get("app") != "mail"]
+        except (OSError, ValueError):
+            others = []
+    allm = [m for m in others + mail_rows_cached() if m["ts"] >= cutoff]
     allm.sort(key=lambda m: m["ts"], reverse=True)
     _write(ALL_INBOX, allm[:MAX_MESSAGES], mail_error=mail_status["error"])
+    if db_error is not None:
+        raise db_error
     return len(msgs)
 
 
