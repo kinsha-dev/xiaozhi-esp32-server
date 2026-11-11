@@ -1,0 +1,1 @@
+/Users/kinsha/esp/voice-note-box/server/plugin/mail_digest.py
