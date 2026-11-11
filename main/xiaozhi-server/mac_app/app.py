@@ -1,4 +1,5 @@
 """Menu-bar app: `python -m mac_app`."""
+import json
 import os
 import subprocess
 import sys
@@ -69,7 +70,7 @@ def main():
     ensure_bluetooth_usage()
     ble = BleService(ctl.cfg)
     ble.start()
-    from mac_app.ctrl import CtrlPanel, register_hotkey
+    from mac_app.ctrl import CtrlPanel, register_hotkeys
 
     panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
                       quit_app=lambda: rumps.quit_application())
@@ -89,7 +90,7 @@ def main():
             for it in self.devices.values():
                 self.device_menu.add(it)
             self._show_device(ctl.device_mode())
-            self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I)", callback=lambda _: panel.open())
+            self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
             self.menu = [self.status, self.ctrl, self.mute, self.device_menu, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
@@ -126,6 +127,10 @@ def main():
             rumps.quit_application()
 
     ctl.start()
-    if not register_hotkey(panel.open):
-        print("[ctrl] Ctrl+I hotkey unavailable; use the menu item", flush=True)
+    armed = register_hotkeys(panel.open)
+    print(f"[ctrl] hotkeys: {armed}", flush=True)
+    try:  # leave the result where support can read it
+        (ctl.cfg.data_dir / "ctrl_hotkeys.json").write_text(json.dumps({"pid": os.getpid(), "armed": armed}))
+    except OSError:
+        pass
     MenuApp().run()

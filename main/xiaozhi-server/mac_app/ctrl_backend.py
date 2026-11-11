@@ -185,12 +185,9 @@ def restart(key: str, uid: int = None, kick=_kick, status=launchd_status, relaun
     u = uid if uid is not None else os.getuid()
     cmd = ["launchctl", "kickstart", "-k", f"gui/{u}/{label}"]
     if label == LABELS["macapp"]:
-        if not status(label, u)["running"]:
-            if relaunch:
-                relaunch()
-                return {"ok": True, "note": "relaunching Vibi.app"}
-            return {"ok": False, "error": "Mac app is not a launchd job here"}
-        subprocess.Popen(["sh", "-c", "sleep 1; " + " ".join(cmd)], start_new_session=True)
-        return {"ok": True, "note": "restarting in 1 s"}
+        # kickstart only re-runs `open -a Vibi.app`, which does nothing while the app is running: quit it, then reopen
+        app = Path.home() / "Applications/Vibi.app"
+        subprocess.Popen(["sh", "-c", f"sleep 1; pkill -f '[m]ac_app'; pkill -x Vibi; sleep 2; open '{app}'"], start_new_session=True)
+        return {"ok": True, "note": "restarting the Mac app in 3 s"}
     rc, err = kick(cmd)
     return {"ok": rc == 0, "error": err}

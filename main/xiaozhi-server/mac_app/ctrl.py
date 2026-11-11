@@ -7,6 +7,7 @@ import os
 import secrets
 import subprocess
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -17,6 +18,7 @@ from mac_app import ctrl_backend as be
 UI = Path(__file__).with_name("ctrl_ui") / "index.html"
 VIBI_APP = Path.home() / "Applications/Vibi.app"
 KEY_I, MOD_CTRL = 34, 0x1000  # kVK_ANSI_I, controlKey
+ALT_MODS = 0x1000 | 0x800  # Ctrl+Option, a fallback when Ctrl+I is taken or unreliable
 
 
 class CtrlPanel:
@@ -110,32 +112,38 @@ class CtrlPanel:
             self.httpd.shutdown()
 
 
-def register_hotkey(callback):
-    """Global Ctrl+I through Carbon RegisterEventHotKey (no Accessibility permission needed). Returns True when armed.
-    Must be called from the main thread, before the AppKit run loop starts."""
+def register_hotkeys(callback, combos=(("Ctrl+I", MOD_CTRL), ("Ctrl+Option+I", ALT_MODS))):
+    """Global hotkeys through Carbon RegisterEventHotKey (no Accessibility permission needed), one shared handler.
+    Returns {name: armed}. Call on the main thread before the AppKit run loop starts."""
+    result = {n: False for n, _ in combos}
     try:
         carbon = ctypes.CDLL(ctypes.util.find_library("Carbon"))
         EventTypeSpec = type("EventTypeSpec", (ctypes.Structure,), {"_fields_": [("eventClass", ctypes.c_uint32), ("eventKind", ctypes.c_uint32)]})
         HotKeyID = type("HotKeyID", (ctypes.Structure,), {"_fields_": [("signature", ctypes.c_uint32), ("id", ctypes.c_uint32)]})
         HANDLER = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        last = [0.0]
 
         @HANDLER
         def handler(_next, _event, _data):
             try:
-                callback()
+                if time.monotonic() - last[0] > 0.5:  # one press, one open
+                    last[0] = time.monotonic()
+                    callback()
             except Exception:
                 pass
             return 0
 
-        register_hotkey._keep = handler  # keep the ctypes callback alive
+        register_hotkeys._keep = handler  # keep the ctypes callback alive
         spec = EventTypeSpec(0x6B657962, 5)  # 'keyb', kEventHotKeyPressed
         carbon.GetApplicationEventTarget.restype = ctypes.c_void_p
         carbon.InstallEventHandler.argtypes = [ctypes.c_void_p, HANDLER, ctypes.c_uint32, ctypes.POINTER(EventTypeSpec), ctypes.c_void_p, ctypes.c_void_p]
-        if carbon.InstallEventHandler(carbon.GetApplicationEventTarget(), handler, 1, ctypes.byref(spec), None, None) != 0:
-            return False
-        ref = ctypes.c_void_p()
+        target = carbon.GetApplicationEventTarget()
+        if carbon.InstallEventHandler(target, handler, 1, ctypes.byref(spec), None, None) != 0:
+            return result
         carbon.RegisterEventHotKey.argtypes = [ctypes.c_uint32, ctypes.c_uint32, HotKeyID, ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)]
-        rc = carbon.RegisterEventHotKey(KEY_I, MOD_CTRL, HotKeyID(0x76436C, 1), carbon.GetApplicationEventTarget(), 0, ctypes.byref(ref))
-        return rc == 0
+        for n, (name, mods) in enumerate(combos, 1):
+            ref = ctypes.c_void_p()
+            result[name] = carbon.RegisterEventHotKey(KEY_I, mods, HotKeyID(0x76436C, n), target, 0, ctypes.byref(ref)) == 0
     except Exception:
-        return False
+        pass
+    return result
