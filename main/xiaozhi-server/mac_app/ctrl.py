@@ -134,19 +134,44 @@ class CtrlPanel:
     def _same(a, b):
         return hmac.compare_digest(str(a).encode(), str(b).encode())
 
+    SEC_HEADERS = {"Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
+                   "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}
+    MAX_BODY = 65536
+
+    def _host_ok(self, host):
+        h = (host or "").split(":")[0].lower()
+        return h in ("127.0.0.1", "localhost") or h.endswith(".trycloudflare.com")
+
+    def _locked(self):
+        now = time.monotonic()
+        self._fails = [t for t in getattr(self, "_fails", []) if now - t < 60]
+        return len(self._fails) >= 10
+
     def handle_remote(self, method, path, query, headers, body=None):
         """Returns (status, content-type, bytes, extra_headers). Auth is checked before anything else."""
+        code, ctype, data, extra = self._remote(method, path, query, headers, body)
+        return code, ctype, data, {**self.SEC_HEADERS, **extra}
+
+    def _remote(self, method, path, query, headers, body):
+        if not self._host_ok(headers.get("Host")):
+            return 421, "application/json", b'{"error":"bad host"}', {}
+        if self._locked():  # brute-force guard: 10 failures a minute, then everything waits
+            return 429, "application/json", b'{"error":"too many attempts"}', {"Retry-After": "60"}
         tok = self.remote_token()
         cookie = SimpleCookie(headers.get("Cookie") or "")
         got = headers.get("X-Ctrl-Token") or (cookie["ctrl_auth"].value if "ctrl_auth" in cookie else "")
         if got and self._same(got, tok):
+            origin = headers.get("Origin")
+            if method != "GET" and origin and urlparse(origin).netloc != headers.get("Host"):  # CSRF: same-origin only
+                return 403, "application/json", b'{"error":"cross-origin"}', {}
             q = {k: v for k, v in query.items() if k != "t"}
             q["t"] = self.token  # internal per-run token, never trusted from the client
             code, ctype, data = self.handle(method, path, q, body)
             return code, ctype, data, {"Cache-Control": "no-store"}
         if method == "GET" and path == "/" and query.get("t") and self._same(query["t"], tok):
             # one-time login: set the cookie, then redirect so the secret leaves the URL
-            return 302, "text/plain", b"", {"Location": "/", "Set-Cookie": f"ctrl_auth={tok}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000"}
+            return 302, "text/plain", b"", {"Location": "/", "Set-Cookie": f"ctrl_auth={tok}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800"}
+        self._fails = getattr(self, "_fails", []) + [time.monotonic()]
         time.sleep(0.5)  # slow down guessing
         return 401, "application/json", b'{"error":"unauthorized"}', {}
 
@@ -162,8 +187,15 @@ class CtrlPanel:
                 body = None
                 if method == "POST":
                     n = int(self.headers.get("Content-Length") or 0)
+                    if n > panel.MAX_BODY:
+                        self.send_response(413)
+                        self.send_header("Content-Length", "0")
+                        self.send_header("Connection", "close")
+                        self.end_headers()
+                        self.close_connection = True
+                        return
                     try:
-                        body = json.loads(self.rfile.read(min(n, 65536)) or b"{}")
+                        body = json.loads(self.rfile.read(n) or b"{}")
                     except ValueError:
                         body = {}
                 code, ctype, data, extra = panel.handle_remote(method, u.path, q, self.headers, body)

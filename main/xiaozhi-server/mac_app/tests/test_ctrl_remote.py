@@ -1,6 +1,7 @@
 import json
 import os
 import stat
+import time
 import urllib.error
 import urllib.request
 
@@ -51,3 +52,29 @@ def test_local_listener_unchanged(tmp_path):
         assert req(p.port, f"/api/history?kind=actions&t={p.token}")[0] == 200
     finally:
         p.stop()
+
+
+def test_remote_hardening(tmp_path):
+    import http.client
+    p = CtrlPanel(tmp_path, tmp_path, lambda t: True)
+    port = p.start_remote()
+    tok = (tmp_path / "ctrl_token").read_text()
+
+    def r(m, path, h=None, body=None):
+        c = http.client.HTTPConnection("127.0.0.1", port)
+        c.request(m, path, body, h or {})
+        x = c.getresponse()
+        return x.status, dict(x.getheaders()), x.read()
+    try:
+        H = {"X-Ctrl-Token": tok}
+        assert r("GET", "/api/history?kind=actions", {**H, "Host": "evil.com"})[0] == 421
+        assert r("POST", "/api/style", {**H, "Origin": "https://evil.com"}, b'{"style":"plain"}')[0] == 403
+        assert r("POST", "/api/style", {**H, "Origin": f"http://127.0.0.1:{port}"}, b'{"style":"plain"}')[0] == 200
+        s, h, _ = r("GET", "/", H)
+        assert h["Referrer-Policy"] == "no-referrer" and h["X-Frame-Options"] == "DENY"
+        assert r("POST", "/api/style", H, b"x" * 70000)[0] == 413
+        p._fails = [time.monotonic()] * 10
+        assert r("GET", "/api/history?kind=actions", H)[0] == 429  # locked out even with the right token
+        assert tok not in str(r("GET", "/", {"Host": "evil.com"})[1])
+    finally:
+        p.stop_remote()
