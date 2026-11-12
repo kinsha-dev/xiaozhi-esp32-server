@@ -2,6 +2,7 @@
 random port, per-run token) serves ctrl_ui/index.html and a JSON API; the panel opens in the default browser."""
 import ctypes
 import ctypes.util
+import hmac
 import json
 import os
 import secrets
@@ -10,6 +11,7 @@ import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -29,6 +31,8 @@ class CtrlPanel:
         self.token = secrets.token_urlsafe(16)
         self.httpd = None
         self.port = None
+        self.tunnel_httpd = None
+        self.tunnel_port = None
 
     def handle(self, method, path, query, body=None):
         """Returns (status, content-type, bytes)."""
@@ -106,6 +110,91 @@ class CtrlPanel:
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
         self.port = self.httpd.server_address[1]
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    # ---- remote access (Cloudflare quick tunnel) -------------------------------------------------------------
+    # A second listener, used only as the tunnel's origin. EVERY request must carry the persistent secret from
+    # data/ctrl_token (X-Ctrl-Token header, or the cookie set by a one-time ?t= login); the local listener above is
+    # untouched. Never log the secret or write it to history.
+    def remote_token(self):
+        f = self.data_dir / "ctrl_token"
+        try:
+            tok = f.read_text().strip()
+            if len(tok) >= 20:
+                return tok
+        except OSError:
+            pass
+        tok = secrets.token_urlsafe(32)
+        fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(tok)
+        os.chmod(f, 0o600)
+        return tok
+
+    @staticmethod
+    def _same(a, b):
+        return hmac.compare_digest(str(a).encode(), str(b).encode())
+
+    def handle_remote(self, method, path, query, headers, body=None):
+        """Returns (status, content-type, bytes, extra_headers). Auth is checked before anything else."""
+        tok = self.remote_token()
+        cookie = SimpleCookie(headers.get("Cookie") or "")
+        got = headers.get("X-Ctrl-Token") or (cookie["ctrl_auth"].value if "ctrl_auth" in cookie else "")
+        if got and self._same(got, tok):
+            q = {k: v for k, v in query.items() if k != "t"}
+            q["t"] = self.token  # internal per-run token, never trusted from the client
+            code, ctype, data = self.handle(method, path, q, body)
+            return code, ctype, data, {"Cache-Control": "no-store"}
+        if method == "GET" and path == "/" and query.get("t") and self._same(query["t"], tok):
+            # one-time login: set the cookie, then redirect so the secret leaves the URL
+            return 302, "text/plain", b"", {"Location": "/", "Set-Cookie": f"ctrl_auth={tok}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000"}
+        time.sleep(0.5)  # slow down guessing
+        return 401, "application/json", b'{"error":"unauthorized"}', {}
+
+    def start_remote(self):
+        if self.tunnel_httpd:
+            return self.tunnel_port
+        panel = self
+
+        class H(BaseHTTPRequestHandler):
+            def _go(self, method):
+                u = urlparse(self.path)
+                q = {k: v[0] for k, v in parse_qs(u.query).items()}
+                body = None
+                if method == "POST":
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        body = json.loads(self.rfile.read(min(n, 65536)) or b"{}")
+                    except ValueError:
+                        body = {}
+                code, ctype, data, extra = panel.handle_remote(method, u.path, q, self.headers, body)
+                self.send_response(code)
+                self.send_header("Content-Type", ctype + "; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                for k, v in extra.items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self):
+                self._go("GET")
+
+            def do_POST(self):
+                self._go("POST")
+
+            def log_message(self, *a):
+                pass
+
+        self.remote_token()
+        self.tunnel_httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.tunnel_port = self.tunnel_httpd.server_address[1]
+        threading.Thread(target=self.tunnel_httpd.serve_forever, daemon=True).start()
+        return self.tunnel_port
+
+    def stop_remote(self):
+        if self.tunnel_httpd:
+            self.tunnel_httpd.shutdown()
+            self.tunnel_httpd.server_close()
+            self.tunnel_httpd, self.tunnel_port = None, None
 
     def url(self):
         return f"http://127.0.0.1:{self.port}/?t={self.token}"
