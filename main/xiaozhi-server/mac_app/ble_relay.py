@@ -84,6 +84,9 @@ class RelayMachine:
             print("[ble] heartbeat", flush=True)
 
     async def uplink(self, packet: bytes):
+        self._pk = getattr(self, "_pk", 0) + 1
+        if self._pk <= 60 or self._pk % 100 == 0:
+            print(f"[ble] pkt#{self._pk} len={len(packet)} seq={packet[0]} idx={packet[1]}/{packet[2]}", flush=True)
         msg = self._up.push(packet)
         if msg is None:
             return
@@ -99,6 +102,9 @@ class RelayMachine:
             await self._on_json(payload)
             return
         if msg_type == TYPE_AUDIO and not self._up.duplicate and self._ws is not None:
+            self._audio_up = getattr(self, "_audio_up", 0) + 1
+            if self._audio_up in (1, 50, 200):
+                print(f"[ble] uplink audio frames={self._audio_up} size={len(payload)}", flush=True)
             await self._ws.send(payload)
 
     async def _ack(self, seq: int | None):
@@ -113,6 +119,7 @@ class RelayMachine:
         except ValueError:
             return
         kind = msg.get("type")
+        print(f"[ble] board json: {kind} {payload[:80]!r}", flush=True)
         if kind == "ble_open":
             await self._open(msg)
             return
@@ -141,6 +148,7 @@ class RelayMachine:
         except Exception as exc:
             print(f"[ble] websocket open failed: {exc}", flush=True)
             return
+        print("[ble] server websocket open", flush=True)
         self._ws = ws
         self.connections += 1
         self._reader = asyncio.create_task(self._read_server(ws))
@@ -162,8 +170,19 @@ class RelayMachine:
             raise
         except Exception as exc:
             print(f"[ble] websocket read ended: {exc}", flush=True)
+        # The server closed the session (not us): tell the board so it stops listening, as a websocket close would.
+        if self._ws is ws:
+            self._ws = None
+            print("[ble] server closed the session; telling the board", flush=True)
+            try:
+                await self._send_json(b'{"type":"ble_close"}')
+            except Exception as exc:
+                print(f"[ble] could not tell the board: {exc}", flush=True)
 
     async def _send_audio(self, opus: bytes):
+        self._audio_down = getattr(self, "_audio_down", 0) + 1
+        if self._audio_down in (1, 50):
+            print(f"[ble] downlink audio frames={self._audio_down} size={len(opus)}", flush=True)
         delay = self._next_audio - self._monotonic()
         if delay > 0:
             await self._sleep(delay)
@@ -174,6 +193,11 @@ class RelayMachine:
 
     async def _send_json(self, payload: bytes):
         await send_reliable(self._write, self._wait_ack, self._take_seq(), payload, self.mtu_payload)
+
+    async def send_system(self, command: str) -> bool:
+        """Board-level command (link_bluetooth, link_auto): handled by the firmware, not sent to the server."""
+        payload = json.dumps({"type": "system", "command": command}, separators=(",", ":")).encode()
+        return await send_reliable(self._write, self._wait_ack, self._take_seq(), payload, self.mtu_payload)
 
     async def close_ws(self):
         ws, self._ws = self._ws, None

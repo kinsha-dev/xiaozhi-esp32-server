@@ -53,15 +53,15 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(c.display_state(), "idle")
 
 
-    def test_earphones_take_over_from_the_board_when_nothing_else_plays(self):
+    def test_board_stays_first_even_with_earphones(self):
         with tempfile.TemporaryDirectory() as d:
             c, _ = make(d)
             (Path(d) / "board_connected").write_text(f"{os.getpid()} 1")
             self.assertTrue(c.defer_to_board())
             self.assertTrue(c.update_earphones(True, False))  # headset is the mic, quiet Mac: changed
-            self.assertFalse(c.defer_to_board())
+            self.assertTrue(c.defer_to_board())  # the connected board still wins in auto
             self.assertFalse(c.update_earphones(True, False))  # nothing new
-            self.assertTrue(c.update_earphones(True, True))  # a video starts: back to the board
+            self.assertTrue(c.update_earphones(True, True))  # a video starts
             self.assertTrue(c.defer_to_board())
             self.assertFalse(c.update_earphones(False, False))
             c.set_device_mode("board")  # a forced board is never taken over

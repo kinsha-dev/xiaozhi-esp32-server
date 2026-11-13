@@ -1,0 +1,112 @@
+# Local, English, no-cloud overrides for xiaozhi-esp32-server (merged over config.yaml).
+server:
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  websocket: ws://kinshas-MacBook-Air.local:8000/xiaozhi/v1/
+  timezone_offset: +4
+
+selected_module:
+  VAD: SileroVAD
+  ASR: LocalWhisperASR
+  LLM: DeepSeekOR
+  TTS: EdgeTTS
+  Memory: voicebox_mem
+  Intent: function_call
+
+ASR:
+  LocalWhisperASR:
+    type: openai
+    api_key: YOUR_API_KEY
+    base_url: http://127.0.0.1:9300/v1/audio/transcriptions
+    model_name: base
+    output_dir: tmp/
+
+LLM:
+  DeepSeekOR:
+    type: openai
+    base_url: https://openrouter.ai/api/v1
+    model_name: deepseek/deepseek-v4.1-flash
+    api_key: YOUR_API_KEY
+    max_tokens: 400
+    temperature: 0.5
+
+Memory:
+  voicebox_mem:
+    type: voicebox_mem
+
+end_prompt:
+  enable: false  # the stock goodbye is generated in Chinese and cannot be spoken by the English voice
+
+Intent:
+  function_call:
+    type: function_call
+    functions:
+      - notes_reminders
+      - mac_control
+      - whatsapp_messages
+      - clear_whatsapp_messages
+      - youtube_notes
+      - mac_notifications
+      - send_whatsapp_message
+      - play_on_tv
+      - tv_volume
+      - computer_use
+      - stop_computer_use
+      - open_tv_app
+      - schedule_tv_video
+      - list_tv_schedule
+      - cancel_tv_schedule
+      - build_feature
+      - build_status
+      - web
+      - vibi_outbox
+      - browser
+      - voice_style
+      - link_notes
+      - notification_apps
+
+TTS:
+  EdgeTTS:
+    type: edge
+    voice: en-US-EmmaMultilingualNeural
+    rate: -10
+    pitch: -4
+    language: English
+    output_dir: tmp/
+
+wakeup_words:
+  - "hi vibi"
+  - "hi esp"
+  - "hey vibi"
+  - "hey esp"
+
+exit_commands:
+  # a spoken "bye" ends the conversation silently (no goodbye is spoken) and saves it to memory;
+  # matched on the whole sentence only, so "bye the way" does not hang up
+  - "bye"
+  - "bye bye"
+  - "goodbye"
+  - "good bye"
+  - "bye for now"
+  - "that's all"
+  - "that is all"
+  - "stop listening"
+  - "go to sleep"
+
+prompt: |
+  You are a concise, friendly voice assistant running on a small desk device.
+  Always reply in English. Keep answers short (one to three sentences) because they are spoken aloud.
+
+tool_call_timeout: 150
+close_connection_no_voice_time: 900
+# the stock cached wake-word replies are Chinese; let the English prompt answer instead
+enable_wakeup_words_response_cache: false
+enable_greeting: false
+prompt_template: data/english-prompt.txt
+
+system_error_response: "Sorry, I'm having trouble right now. Please try again in a moment."
+
+VAD:
+  SileroVAD:
+    min_silence_duration_ms: 600

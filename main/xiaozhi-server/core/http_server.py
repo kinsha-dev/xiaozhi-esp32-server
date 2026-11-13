@@ -62,9 +62,15 @@ class SimpleHttpServer:
                             ),
                         ]
                     )
+                async def board_link_handler(_request):
+                    from core import board_link
+
+                    return web.Response(text=board_link.probe_body())
+
                 # 添加路由
                 app.add_routes(
                     [
+                        web.get("/xiaozhi/link", board_link_handler),
                         web.get("/mcp/vision/explain", self.vision_handler.handle_get),
                         web.post(
                             "/mcp/vision/explain", self.vision_handler.handle_post

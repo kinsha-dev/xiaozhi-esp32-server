@@ -95,9 +95,17 @@ def main():
             for it in self.devices.values():
                 self.device_menu.add(it)
             self._show_device(ctl.device_mode())
+            self.links = {m: rumps.MenuItem(t, callback=self.on_link) for m, t in
+                          (("auto", "Auto (Wi-Fi, Bluetooth if needed)"), ("bluetooth", "Bluetooth"))}
+            self.link_menu = rumps.MenuItem("Board link")
+            for it in self.links.values():
+                self.link_menu.add(it)
+            self._show_link(ctl.board_link())
+            self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
+            self.auto.state = ctl.auto_speak()
             self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
             self.remote = rumps.MenuItem("Remote access (tunnel)", callback=self.on_remote)
-            self.menu = [self.status, self.ctrl, self.remote, self.mute, self.device_menu, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.menu = [self.status, self.ctrl, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -121,6 +129,19 @@ def main():
             mode = next(m for m, it in self.devices.items() if it is item)
             ctl.set_device_mode(mode)
             self._show_device(mode)
+
+        def _show_link(self, mode):
+            for m, it in self.links.items():
+                it.state = m == mode
+
+        def on_link(self, item):
+            mode = next(m for m, it in self.links.items() if it is item)
+            ctl.set_board_link(mode)
+            self._show_link(mode)
+
+        def on_auto(self, item):
+            item.state = not item.state
+            ctl.set_auto_speak(bool(item.state))
 
         def on_mute(self, item):
             item.state = not item.state
@@ -155,7 +176,7 @@ def main():
     ctl.start()
     armed = register_hotkeys(panel.open)
     print(f"[ctrl] hotkeys: {armed}", flush=True)
-    try:  # leave the result where support can read it
+    try:  # the log can be hard to find: leave the result where the panel/support can read it
         (ctl.cfg.data_dir / "ctrl_hotkeys.json").write_text(json.dumps({"pid": os.getpid(), "armed": armed}))
     except OSError:
         pass
