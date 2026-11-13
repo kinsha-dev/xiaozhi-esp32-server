@@ -40,6 +40,21 @@ def _row(id_, ts, title, status="ok", detail="", risky=False, rerun=None, source
             "status": status, "detail": detail, "risky": risky, "rerun": rerun, "source": source}
 
 
+def messages(data_dir: Path, limit: int = 300) -> list:
+    """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
+    category. Read through the voice box repo's message_board module, found next to the data dir."""
+    import importlib.util
+
+    mod_path = Path(os.environ.get("VIBI_MESSAGE_BOARD") or Path(data_dir).parent / "server" / "message_board.py")
+    if not mod_path.exists():
+        return []
+    spec = importlib.util.spec_from_file_location("vibi_message_board", mod_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    rows = mod.messages(Path(data_dir))[:limit]
+    return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
+
+
 def history(data_dir: Path, kind: str, limit: int = 100) -> list:
     d = Path(data_dir)
     rows = []

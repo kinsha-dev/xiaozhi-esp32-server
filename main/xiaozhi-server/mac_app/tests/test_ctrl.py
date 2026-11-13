@@ -82,3 +82,20 @@ def test_style_get_set_and_api(tmp_path):
     assert json.loads(body)["style"] == "plain" and (tmp_path / "voice_style").read_text() == "plain"
     assert json.loads(p.handle("GET", "/api/style", {"t": p.token})[2])["style"] == "plain"
     assert p.handle("POST", "/api/style", {"t": p.token}, {"style": "rude"})[0] == 500
+
+
+def test_messages_endpoint_lists_every_source_with_a_category(tmp_path, monkeypatch):
+    import json
+    from mac_app import ctrl_backend as be
+
+    server = tmp_path / "server"
+    server.mkdir()
+    (server / "message_board.py").write_text(
+        "def messages(data_dir, source=None):\n"
+        "    return [{'id':'1','source':'Grok Bot','channel':'job-hunt','direction':'to','ts':2,'time':'t','status':'done','summary':'s','body':'b','pair_id':''},"
+        "{'id':'2','source':'WhatsApp','channel':'whatsapp','direction':'from','ts':1,'time':'t','status':'sent','summary':'w','body':'w','pair_id':''}]\n")
+    data = tmp_path / "data"
+    data.mkdir()
+    rows = be.messages(data)
+    assert [r["category"] for r in rows] == ["Grok Bot · job-hunt", "WhatsApp"]
+    assert be.messages(tmp_path / "nowhere" / "data") == []
