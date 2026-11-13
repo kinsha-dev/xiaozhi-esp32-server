@@ -20,6 +20,10 @@ _NAMES = {"bibi", "vibi", "vivi", "bibbi", "bibie", "vibie", "bibby", "vb"}
 _PAIRS = {("bee", "bee"), ("vee", "vee"), ("be", "be"), ("bi", "bi"), ("vi", "vi")}
 
 
+NOISE_QUIET = 0.005  # frame rms of a quiet room (~ -46 dBFS): relaxed detection
+NOISE_LOUD = 0.02  # frame rms of a noisy room (~ -34 dBFS): strict detection
+
+
 def _tokens(text: str):
     return re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower()).split()
 
@@ -54,6 +58,8 @@ class WakeDetector:
 
             vad = webrtcvad.Vad(2)
         self._vad = vad
+        self._noise = None  # running rms of non-speech frames
+        self._mode = None
         self.command = ""  # text spoken after the wake phrase in the segment that last matched
         self._reset()
 
@@ -63,9 +69,30 @@ class WakeDetector:
         self._speech = 0
         self._silence = 0
 
+    def strictness(self) -> float:
+        """0.0 in a quiet room (relaxed), 1.0 when background noise is present (strict)."""
+        if self._noise is None:
+            return 0.0
+        return min(1.0, max(0.0, (self._noise - NOISE_QUIET) / (NOISE_LOUD - NOISE_QUIET)))
+
+    def _adapt(self, t: float):
+        mode = 1 if t < 0.33 else 2 if t < 0.66 else 3
+        if mode != self._mode and hasattr(self._vad, "set_mode"):
+            self._vad.set_mode(mode)
+        self._mode = mode
+
     def feed(self, frame: bytes) -> bool:
         """Feed one 30 ms 16 kHz int16 mono frame. True once when a finished segment matches the phrase."""
-        if self._vad.is_speech(frame, RATE):
+        speech = self._vad.is_speech(frame, RATE)
+        if not speech:
+            f = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+            rms = float(np.sqrt(np.mean(f * f))) if len(f) else 0.0
+            if self._noise is None:
+                self._noise = rms
+            else:  # rises slowly, falls fast, so a passing sound does not make the room "noisy"
+                self._noise += (0.02 if rms > self._noise else 0.1) * (rms - self._noise)
+            self._adapt(self.strictness())
+        if speech:
             if not self._frames:
                 self._frames.extend(self._preroll)
             self._frames.append(frame)
@@ -81,14 +108,18 @@ class WakeDetector:
             return False
         frames, speech = self._frames, self._speech
         self._reset()
-        if speech < MIN_SPEECH_FRAMES:
+        t = self.strictness()
+        if speech < round(MIN_SPEECH_FRAMES * (0.75 + 0.75 * t)):  # 6 frames quiet .. 12 noisy
             return False
         pcm = np.frombuffer(b"".join(frames), dtype=np.int16)[-MAX_SEGMENT_S * RATE:]
         audio = pcm.astype(np.float32) / 32768.0
         peak = float(np.abs(audio).max()) if len(audio) else 0.0
         if os.environ.get("MAC_APP_DEBUG"):
             print(f"[wake] segment {len(audio) / RATE:.1f}s peak={peak:.3f}", flush=True)
-        if peak < MIN_PEAK:
+        min_peak = MIN_PEAK * (0.67 + 0.33 * t)
+        if t > 0 and self._noise:
+            min_peak = max(min_peak, self._noise * 4 * t)  # in noise the voice must clearly stand out
+        if peak < min_peak:
             return False
         if peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
             audio = audio * (0.5 / peak)
