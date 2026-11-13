@@ -3,6 +3,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 from mac_app.ble_central import BleService, ensure_bluetooth_usage
@@ -71,9 +73,11 @@ def main():
     ble = BleService(ctl.cfg)
     ble.start()
     from mac_app.ctrl import CtrlPanel, register_hotkeys
+    from mac_app.ctrl_tunnel import Tunnel
 
     panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
                       quit_app=lambda: rumps.quit_application(), set_muted=lambda on: ctl.set_muted(on))
+    tunnel = Tunnel(panel, ctl.cfg.data_dir)
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
     class MenuApp(rumps.App):
@@ -100,6 +104,7 @@ def main():
             self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
             self.auto.state = ctl.auto_speak()
             self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
+            self.remote = rumps.MenuItem("Remote access (tunnel)", callback=self.on_remote)
             self.menu = [self.status, self.ctrl, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
@@ -107,6 +112,8 @@ def main():
         def refresh(self, _):
             s = ctl.display_state()
             self.title = ICONS.get(s, ICONS["idle"])
+            tunnel.poll_cmd()
+            self.remote.state = tunnel.running()
             self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
             try:
                 overlay.update(s)
@@ -139,6 +146,23 @@ def main():
         def on_mute(self, item):
             item.state = not item.state
             ctl.set_muted(bool(item.state))
+
+        def on_remote(self, item):
+            if tunnel.running():
+                tunnel.stop()
+                return
+            if not tunnel.start():
+                rumps.alert("Remote access", tunnel.error)
+                return
+            threading.Thread(target=self._announce_remote, daemon=True).start()
+
+        def _announce_remote(self):
+            for _ in range(60):
+                if tunnel.url:
+                    subprocess.run(["pbcopy"], input=tunnel.link().encode())  # login link goes to the clipboard, not the log
+                    print(f"[ctrl] remote access on: {tunnel.url} (login link copied to clipboard)", flush=True)
+                    return
+                time.sleep(0.5)
 
         def on_login(self, item):
             item.state = not item.state
