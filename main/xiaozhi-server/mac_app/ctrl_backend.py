@@ -1,9 +1,11 @@
 """Vibi Ctrl data layer (no UI): history lists, component status, restart, rerun. Pure functions over data/ files."""
+import fcntl
 import json
 import os
 import re
 import subprocess
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -57,6 +59,40 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
     rows = rows[:limit]
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
+
+
+CHAT_TARGETS = ("claude", "grok")
+CHAT_LIMIT = 4000
+
+
+def chat(data_dir: Path, to: str, text: str) -> dict:
+    """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads) or to the Grok Bot
+    (a `task` request in data/grok/requests). Same file contracts the voice path uses, so replies show up on the board."""
+    to, text = (to or "").lower(), (text or "").strip()
+    if to not in CHAT_TARGETS:
+        raise ValueError("to must be claude or grok")
+    if not text:
+        raise ValueError("empty message")
+    if len(text) > CHAT_LIMIT:
+        raise ValueError("message too long")
+    d, mid, now = Path(data_dir), uuid.uuid4().hex[:6], time.time()
+    d.mkdir(parents=True, exist_ok=True)
+    if to == "claude":
+        row = {"id": mid, "ts": datetime.fromtimestamp(now).strftime("%Y-%m-%dT%H:%M:%S"), "text": text,
+               "status": "new", "project": "voice box", "source": "Vibi Ctrl"}
+        with open(d / ".to_claude.lock", "w") as lock:  # the lock vibi and the server use for this file
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with open(d / "to_claude.jsonl", "a") as f:
+                f.write(json.dumps(row) + "\n")
+    else:
+        req = d / "grok" / "requests"
+        req.mkdir(parents=True, exist_ok=True)
+        tmp = req / f".{mid}.tmp"
+        tmp.write_text(json.dumps({"id": mid, "kind": "task", "url": "", "prompt": text,
+                                   "created": datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S"),
+                                   "reason": "Vibi Ctrl chat"}))
+        tmp.replace(req / f"{mid}.json")
+    return {"id": mid, "to": to}
 
 
 def history(data_dir: Path, kind: str, limit: int = 100) -> list:

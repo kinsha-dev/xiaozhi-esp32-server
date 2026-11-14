@@ -100,3 +100,30 @@ def test_messages_endpoint_lists_every_source_with_a_category(tmp_path, monkeypa
     assert [r["category"] for r in rows] == ["Grok Bot · job-hunt", "WhatsApp"]
     assert be.messages(data) == []  # ts 1 and 2 are older than 48 hours
     assert be.messages(tmp_path / "nowhere" / "data") == []
+
+
+def test_chat_writes_the_claude_inbox_and_grok_request(tmp_path):
+    import json
+    import pytest
+    from mac_app import ctrl_backend as be
+
+    out = be.chat(tmp_path, "claude", " review PR 13 ")
+    row = json.loads((tmp_path / "to_claude.jsonl").read_text().splitlines()[0])
+    assert (row["text"], row["status"], row["project"], row["id"]) == ("review PR 13", "new", "voice box", out["id"])
+    out = be.chat(tmp_path, "grok", "find a flight")
+    req = json.loads((tmp_path / "grok" / "requests" / f"{out['id']}.json").read_text())
+    assert (req["kind"], req["prompt"]) == ("task", "find a flight")
+    assert not list((tmp_path / "grok" / "requests").glob(".*.tmp"))
+    for bad in (("nobody", "x"), ("claude", "  "), ("grok", "x" * 5000)):
+        with pytest.raises(ValueError):
+            be.chat(tmp_path, *bad)
+
+
+def test_chat_computer_use_replays_a_voice_request(tmp_path):
+    sent = []
+    p = CtrlPanel(tmp_path, tmp_path, lambda text: sent.append(text) or True)
+    code, _, out = p.handle("POST", "/api/chat", {"t": p.token}, {"to": "computer", "text": " open  Safari "})
+    assert code == 200 and sent == ["Use the computer to open Safari"]
+    assert p.handle("POST", "/api/chat", {"t": p.token}, {"to": "computer", "text": "  "})[0] == 400
+    busy = CtrlPanel(tmp_path, tmp_path, lambda text: False)
+    assert busy.handle("POST", "/api/chat", {"t": busy.token}, {"to": "computer", "text": "x"})[0] == 409
