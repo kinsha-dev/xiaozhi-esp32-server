@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from mac_app import ctrl_backend as be
+from mac_app.ctrl_passkey import JS, LOGIN_HTML, Passkeys
 
 UI = Path(__file__).with_name("ctrl_ui") / "index.html"
 VIBI_APP = Path.home() / "Applications/Vibi.app"
@@ -33,6 +34,7 @@ class CtrlPanel:
         self.port = None
         self.tunnel_httpd = None
         self.tunnel_port = None
+        self.passkeys = Passkeys(self.data_dir)
 
     def handle(self, method, path, query, body=None):
         """Returns (status, content-type, bytes)."""
@@ -144,9 +146,16 @@ class CtrlPanel:
                    "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}
     MAX_BODY = 65536
 
+    def named_host(self):
+        """Stable hostname of a named Cloudflare tunnel (data/ctrl_tunnel_named.json {"name","hostname"}), if configured."""
+        try:
+            return str(json.loads((self.data_dir / "ctrl_tunnel_named.json").read_text()).get("hostname", "")).lower()
+        except (OSError, ValueError, AttributeError):
+            return ""
+
     def _host_ok(self, host):
         h = (host or "").split(":")[0].lower()
-        return h in ("127.0.0.1", "localhost") or h.endswith(".trycloudflare.com")
+        return h in ("127.0.0.1", "localhost") or h.endswith(".trycloudflare.com") or (bool(self.named_host()) and h == self.named_host())
 
     def _locked(self):
         now = time.monotonic()
@@ -158,27 +167,83 @@ class CtrlPanel:
         code, ctype, data, extra = self._remote(method, path, query, headers, body)
         return code, ctype, data, {**self.SEC_HEADERS, **extra}
 
+    def _json(self, code, obj, extra=None):
+        return code, "application/json", json.dumps(obj).encode(), extra or {}
+
+    def _fail(self):
+        self._fails = getattr(self, "_fails", []) + [time.monotonic()]
+        time.sleep(0.5)  # slow down guessing
+
     def _remote(self, method, path, query, headers, body):
-        if not self._host_ok(headers.get("Host")):
+        host = headers.get("Host") or ""
+        if not self._host_ok(host):
             return 421, "application/json", b'{"error":"bad host"}', {}
         if self._locked():  # brute-force guard: 10 failures a minute, then everything waits
             return 429, "application/json", b'{"error":"too many attempts"}', {"Retry-After": "60"}
-        tok = self.remote_token()
+        rp_id = host.split(":")[0].lower()
+        local = rp_id in ("127.0.0.1", "localhost")
         cookie = SimpleCookie(headers.get("Cookie") or "")
-        got = headers.get("X-Ctrl-Token") or (cookie["ctrl_auth"].value if "ctrl_auth" in cookie else "")
-        if got and self._same(got, tok):
-            origin = headers.get("Origin")
-            if method != "GET" and origin and urlparse(origin).netloc != headers.get("Host"):  # CSRF: same-origin only
-                return 403, "application/json", b'{"error":"cross-origin"}', {}
+        ck = cookie["ctrl_auth"].value if "ctrl_auth" in cookie else ""
+        tok = self.remote_token()
+        authed = False
+        if ck.startswith("p."):  # passkey session
+            authed = self.passkeys.session_ok(ck[2:])
+        else:
+            got = headers.get("X-Ctrl-Token") or ck
+            authed = bool(got) and self._same(got, tok) and self.passkeys.token_login_enabled(rp_id)
+        origin = headers.get("Origin")
+        same_origin = bool(origin) and urlparse(origin).netloc == host and (local or urlparse(origin).scheme == "https")
+        if method != "GET" and origin and urlparse(origin).netloc != host:  # CSRF: same-origin only
+            if authed or path.startswith("/api/passkey/"):
+                return self._json(403, {"error": "cross-origin"})
+
+        if path == "/passkey.js" and method == "GET":
+            return 200, "application/javascript", JS.encode(), {"Cache-Control": "no-store"}
+        if path == "/api/passkey/login/options" and method == "POST":
+            return self._json(200, self.passkeys.login_options(rp_id), {"Cache-Control": "no-store"})
+        if path == "/api/passkey/login/verify" and method == "POST":
+            try:
+                if not same_origin:
+                    raise ValueError("origin")
+                body = body or {}
+                sid = self.passkeys.login_verify(rp_id, origin, body.get("cid", ""), body.get("credential") or {})
+            except Exception:
+                self._fail()
+                return self._json(401, {"error": "passkey login failed"})
+            return self._json(200, {"ok": True}, {"Set-Cookie": f"ctrl_auth=p.{sid}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800",
+                                                  "Cache-Control": "no-store"})
+        if authed and path.startswith("/api/passkey/"):
+            body = body or {}
+            if path == "/api/passkey/status" and method == "GET":
+                return self._json(200, {"count": self.passkeys.count(rp_id), "token_login": self.passkeys.token_login_enabled(rp_id), "rp_id": rp_id},
+                                  {"Cache-Control": "no-store"})
+            if method == "POST" and path == "/api/passkey/register/options":
+                return self._json(200, self.passkeys.register_options(rp_id), {"Cache-Control": "no-store"})
+            if method == "POST" and path == "/api/passkey/register/verify":
+                try:
+                    if not same_origin:
+                        raise ValueError("origin")
+                    self.passkeys.register_verify(rp_id, origin, body.get("cid", ""), body.get("credential") or {}, str(body.get("name", "")))
+                except Exception:
+                    return self._json(400, {"error": "passkey registration failed"})
+                return self._json(200, {"ok": True})
+            if method == "POST" and path == "/api/passkey/token-login":
+                ok = self.passkeys.set_token_login(rp_id, bool(body.get("enabled")))
+                return self._json(200 if ok else 409, {"ok": ok, "error": None if ok else "register a passkey on this host first"})
+            return self._json(404, {"error": "not found"})
+        if authed:
             q = {k: v for k, v in query.items() if k != "t"}
             q["t"] = self.token  # internal per-run token, never trusted from the client
             code, ctype, data = self.handle(method, path, q, body)
+            if path == "/" and code == 200:
+                data = data.replace(b"</body>", b'<script src="/passkey.js"></script></body>', 1)
             return code, ctype, data, {"Cache-Control": "no-store"}
-        if method == "GET" and path == "/" and query.get("t") and self._same(query["t"], tok):
+        if method == "GET" and path == "/" and query.get("t") and self._same(query["t"], tok) and self.passkeys.token_login_enabled(rp_id):
             # one-time login: set the cookie, then redirect so the secret leaves the URL
             return 302, "text/plain", b"", {"Location": "/", "Set-Cookie": f"ctrl_auth={tok}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800"}
-        self._fails = getattr(self, "_fails", []) + [time.monotonic()]
-        time.sleep(0.5)  # slow down guessing
+        if method == "GET" and path == "/" and not query.get("t") and not headers.get("X-Ctrl-Token"):
+            return 401, "text/html", LOGIN_HTML, {"Cache-Control": "no-store"}  # nothing to guess: the sign-in page costs no failure
+        self._fail()
         return 401, "application/json", b'{"error":"unauthorized"}', {}
 
     def start_remote(self):

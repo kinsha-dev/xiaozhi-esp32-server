@@ -23,8 +23,20 @@ class Tunnel:
         return self.proc is not None and self.proc.poll() is None
 
     def link(self):
-        """URL with the one-time login token; shown to the user only, never logged."""
-        return f"{self.url}/?t={self.panel.remote_token()}" if self.url else None
+        """Link to copy: with the one-time login token while token login is on for this host (shown to the user only,
+        never logged); the plain URL once a passkey replaces it."""
+        if not self.url:
+            return None
+        host = self.url.split("//", 1)[-1]
+        return f"{self.url}/?t={self.panel.remote_token()}" if self.panel.passkeys.token_login_enabled(host) else self.url
+
+    def named(self):
+        """(tunnel name, hostname) of a configured named tunnel, else None."""
+        try:
+            d = json.loads((self.data_dir / "ctrl_tunnel_named.json").read_text())
+            return (str(d["name"]), str(d["hostname"]).lower())
+        except (OSError, ValueError, KeyError):
+            return None
 
     def start(self):
         with self._lock:
@@ -37,8 +49,12 @@ class Tunnel:
                 return False
             self.error, self.url = None, None
             port = self.panel.start_remote()
-            self.proc = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
-                                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, start_new_session=True)
+            named = self.named()  # stable hostname: passkeys survive restarts
+            cmd = ([exe, "tunnel", "--no-autoupdate", "run", "--url", f"http://127.0.0.1:{port}", named[0]] if named
+                   else [exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"])
+            self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, start_new_session=True)
+            if named:
+                self.url = f"https://{named[1]}"
             threading.Thread(target=self._read, args=(self.proc,), daemon=True).start()
             self._publish()
             return True
