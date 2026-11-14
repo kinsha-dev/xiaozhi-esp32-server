@@ -51,6 +51,11 @@ class CtrlPanel:
                 except ValueError:
                     hours = 48
                 data = be.messages(self.data_dir, hours=hours)
+            elif path == "/api/chat" and method == "POST":
+                try:
+                    data = be.chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")))
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
             elif path == "/api/components" and method == "GET":
                 data = be.components(self.data_dir, self.server_dir)
             elif path == "/api/restart" and method == "POST":
