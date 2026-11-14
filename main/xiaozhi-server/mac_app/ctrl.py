@@ -46,7 +46,11 @@ class CtrlPanel:
             if path == "/api/history" and method == "GET":
                 data = be.history(self.data_dir, query.get("kind", "actions"))
             elif path == "/api/messages" and method == "GET":
-                data = be.messages(self.data_dir)
+                try:
+                    hours = float(query.get("hours", 48))
+                except ValueError:
+                    hours = 48
+                data = be.messages(self.data_dir, hours=hours)
             elif path == "/api/components" and method == "GET":
                 data = be.components(self.data_dir, self.server_dir)
             elif path == "/api/restart" and method == "POST":

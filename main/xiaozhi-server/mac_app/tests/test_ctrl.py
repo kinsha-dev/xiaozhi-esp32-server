@@ -96,6 +96,7 @@ def test_messages_endpoint_lists_every_source_with_a_category(tmp_path, monkeypa
         "{'id':'2','source':'WhatsApp','channel':'whatsapp','direction':'from','ts':1,'time':'t','status':'sent','summary':'w','body':'w','pair_id':''}]\n")
     data = tmp_path / "data"
     data.mkdir()
-    rows = be.messages(data)
+    rows = be.messages(data, hours=0)
     assert [r["category"] for r in rows] == ["Grok Bot · job-hunt", "WhatsApp"]
+    assert be.messages(data) == []  # ts 1 and 2 are older than 48 hours
     assert be.messages(tmp_path / "nowhere" / "data") == []
