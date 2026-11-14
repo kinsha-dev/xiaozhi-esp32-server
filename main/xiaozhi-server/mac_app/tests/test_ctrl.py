@@ -117,3 +117,13 @@ def test_chat_writes_the_claude_inbox_and_grok_request(tmp_path):
     for bad in (("nobody", "x"), ("claude", "  "), ("grok", "x" * 5000)):
         with pytest.raises(ValueError):
             be.chat(tmp_path, *bad)
+
+
+def test_chat_computer_use_replays_a_voice_request(tmp_path):
+    sent = []
+    p = CtrlPanel(tmp_path, tmp_path, lambda text: sent.append(text) or True)
+    code, _, out = p.handle("POST", "/api/chat", {"t": p.token}, {"to": "computer", "text": " open  Safari "})
+    assert code == 200 and sent == ["Use the computer to open Safari"]
+    assert p.handle("POST", "/api/chat", {"t": p.token}, {"to": "computer", "text": "  "})[0] == 400
+    busy = CtrlPanel(tmp_path, tmp_path, lambda text: False)
+    assert busy.handle("POST", "/api/chat", {"t": busy.token}, {"to": "computer", "text": "x"})[0] == 409

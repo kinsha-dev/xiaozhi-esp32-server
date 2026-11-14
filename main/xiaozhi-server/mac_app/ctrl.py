@@ -51,6 +51,14 @@ class CtrlPanel:
                 except ValueError:
                     hours = 48
                 data = be.messages(self.data_dir, hours=hours)
+            elif path == "/api/chat" and method == "POST" and body.get("to") == "computer":
+                text = " ".join(str(body.get("text", "")).split())
+                if not text or len(text) > be.CHAT_LIMIT:
+                    return 400, "application/json", b'{"error":"empty or too long"}'
+                # Replayed as a voice request, so Vibi's usual spoken yes applies to anything that sends, buys, deletes or logs in.
+                if not self._rerun(f"Use the computer to {text}"):
+                    return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
+                data = {"id": "", "to": "computer", "note": "Vibi will ask you out loud before anything risky."}
             elif path == "/api/chat" and method == "POST":
                 try:
                     data = be.chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")))
