@@ -104,8 +104,9 @@ def main():
             self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
             self.auto.state = ctl.auto_speak()
             self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
-            self.remote = rumps.MenuItem("Remote access (tunnel)", callback=self.on_remote)
-            self.menu = [self.status, self.ctrl, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.remote = rumps.MenuItem("Remote tunnel: off (click to start)", callback=self.on_remote)
+            self.remote_copy = rumps.MenuItem("Copy remote link", callback=self.on_copy_remote)
+            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -113,13 +114,27 @@ def main():
             s = ctl.display_state()
             self.title = ICONS.get(s, ICONS["idle"])
             tunnel.poll_cmd()
-            self.remote.state = tunnel.running()
+            self._show_remote()
             self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
             try:
                 overlay.update(s)
             except Exception as e:  # never let the overlay break the menu bar
                 print(f"[overlay] {e}", flush=True)
             self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
+
+        def _show_remote(self):
+            on = tunnel.running()
+            title = ("Remote tunnel: starting…" if not tunnel.url else f"Remote tunnel: on, {tunnel.url.split('//', 1)[-1]} (click to stop)") if on else "Remote tunnel: off (click to start)"
+            if self.remote.title != title:
+                self.remote.title = title
+            self.remote.state = on
+            if (self.remote_copy.callback is not None) != (on and bool(tunnel.url)):  # enabled only while a URL exists
+                self.remote_copy.set_callback(self.on_copy_remote if on and tunnel.url else None)
+
+        def on_copy_remote(self, _):
+            link = tunnel.link()
+            if link:
+                subprocess.run(["pbcopy"], input=link.encode())  # may hold the login token: clipboard only, never logged
 
         def _show_device(self, mode):
             for m, it in self.devices.items():
