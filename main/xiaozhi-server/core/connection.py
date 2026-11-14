@@ -41,6 +41,7 @@ from plugins_func.register import Action, ActionResponse, all_function_registry,
 from core.auth import AuthenticationError
 from config.config_loader import get_private_config_from_api
 from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
+from core.utils.ignore_gate import IgnoreGate
 from config.logger import setup_logging, build_module_string, create_connection_logger
 from config.manage_api_client import DeviceNotFoundException, DeviceBindException, generate_and_save_chat_title
 from core.utils.prompt_manager import PromptManager
@@ -1156,6 +1157,7 @@ class ConnectionHandler:
         tool_calls_list = []  # 格式: [{"id": "", "name": "", "arguments": ""}]
         content_arguments = ""
         emotion_flag = True
+        ignore_gate = IgnoreGate()
         try:
             for response in llm_responses:
                 if self.client_abort:
@@ -1213,6 +1215,8 @@ class ConnectionHandler:
 
                 if content is not None and len(content) > 0:
                     if not tool_call_flag:
+                        content = ignore_gate.feed(content)  # "[ignore]" = background chatter: say nothing
+                    if content and not tool_call_flag:
                         response_message.append(content)
                         self.tts.tts_text_queue.put(
                             TTSMessageDTO(
@@ -1241,6 +1245,17 @@ class ConnectionHandler:
                     )
                 )
             return
+        tail = ignore_gate.flush()  # a short reply that stayed undecided to the end
+        if tail and not tool_call_flag:
+            response_message.append(tail)
+            self.tts.tts_text_queue.put(
+                TTSMessageDTO(
+                    sentence_id=current_sentence_id,
+                    sentence_type=SentenceType.MIDDLE,
+                    content_type=ContentType.TEXT,
+                    content_detail=tail,
+                )
+            )
         # 处理function call
         if tool_call_flag:
             bHasError = False
