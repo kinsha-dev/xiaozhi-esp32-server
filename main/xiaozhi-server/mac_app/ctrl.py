@@ -45,6 +45,8 @@ class CtrlPanel:
         try:
             if path == "/api/history" and method == "GET":
                 data = be.history(self.data_dir, query.get("kind", "actions"))
+            elif path == "/api/messages" and method == "GET":
+                data = be.messages(self.data_dir)
             elif path == "/api/components" and method == "GET":
                 data = be.components(self.data_dir, self.server_dir)
             elif path == "/api/restart" and method == "POST":
