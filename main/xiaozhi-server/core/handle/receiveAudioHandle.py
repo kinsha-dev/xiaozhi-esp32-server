@@ -93,6 +93,20 @@ async def startToChat(conn: "ConnectionHandler", text):
     else:
         conn.current_speaker = None
 
+    if audio_device.is_board(conn) and conn.client_listen_mode != "manual":
+        from core.utils import name_filter
+
+        heard = actual_text
+        try:
+            if heard.strip().startswith("{"):
+                heard = json.loads(heard).get("content", heard)
+        except (ValueError, AttributeError):
+            pass
+        if not name_filter.should_answer(heard, getattr(conn, "_followup_until", 0.0)):
+            conn.logger.bind(tag=TAG).info(f"Ignored (no \"Vibi\" in it): {str(heard)[:80]}")
+            return
+        conn._followup_until = time.time() + name_filter.FOLLOWUP_S
+
     if conn.need_bind:
         await check_bind_device(conn)
         return
