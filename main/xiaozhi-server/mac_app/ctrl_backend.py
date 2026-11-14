@@ -40,9 +40,9 @@ def _row(id_, ts, title, status="ok", detail="", risky=False, rerun=None, source
             "status": status, "detail": detail, "risky": risky, "rerun": rerun, "source": source}
 
 
-def messages(data_dir: Path, limit: int = 300) -> list:
+def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
     """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
-    category. Read through the voice box repo's message_board module, found next to the data dir."""
+    category. Only the last `hours` hours (0 = everything). Read through the voice box repo's message_board module, found next to the data dir."""
     import importlib.util
 
     mod_path = Path(os.environ.get("VIBI_MESSAGE_BOARD") or Path(data_dir).parent / "server" / "message_board.py")
@@ -51,7 +51,11 @@ def messages(data_dir: Path, limit: int = 300) -> list:
     spec = importlib.util.spec_from_file_location("vibi_message_board", mod_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    rows = mod.messages(Path(data_dir))[:limit]
+    rows = mod.messages(Path(data_dir))
+    if hours and hours > 0:
+        cutoff = time.time() - hours * 3600
+        rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
+    rows = rows[:limit]
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
 
