@@ -7,6 +7,7 @@ from typing import Callable
 
 
 RETRY_S = 20.0
+MAX_AGE_S = 12 * 3600  # matches vibi_outbox.MAX_AGE_S: an old stuck "pending" row must not retrigger forever
 
 
 def has_pending(path: Path) -> bool:
@@ -14,9 +15,11 @@ def has_pending(path: Path) -> bool:
         lines = Path(path).read_text().splitlines()
     except OSError:
         return False
+    now = time.time()
     for line in lines:
         try:
-            if json.loads(line).get("status") == "pending":
+            row = json.loads(line)
+            if row.get("status") == "pending" and now - row.get("ts", now) < MAX_AGE_S:
                 return True
         except (ValueError, AttributeError):
             continue
