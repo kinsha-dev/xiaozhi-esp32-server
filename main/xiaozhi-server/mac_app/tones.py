@@ -8,6 +8,7 @@ off a tone started here so it cannot keep sounding over the start of a spoken re
 import os
 import subprocess
 import tempfile
+import threading
 import wave
 from typing import Callable
 
@@ -32,8 +33,16 @@ def _play_default(samples, rate) -> None:
         w.setsampwidth(2)
         w.setframerate(rate)
         w.writeframes(np.asarray(samples, dtype=np.int16).tobytes())
-    _proc = subprocess.Popen(["/bin/sh", "-c", 'afplay "$1"; rm -f "$1"', "sh", path],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _proc = subprocess.Popen(["afplay", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    threading.Thread(target=_cleanup, args=(_proc, path), daemon=True).start()
+
+
+def _cleanup(proc, path) -> None:
+    proc.wait()
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 def _stop_default() -> None:
