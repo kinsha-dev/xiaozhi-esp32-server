@@ -45,10 +45,10 @@ def _silence(dur_s: float) -> np.ndarray:
 
 
 def _confused() -> np.ndarray:
-    """A wavering down-then-up chirp, like R2D2's confused "hmm?"."""
+    """A soft, smooth sine "hm?": a gentle dip then rise, no harsh square wave or vibrato."""
     return np.concatenate([
-        _segment(700, 450, 0.14, vibrato_hz=35, vibrato_depth=40),
-        _segment(450, 650, 0.10, vibrato_hz=35, vibrato_depth=40),
+        _segment(520, 420, 0.12, wave_shape="sine", amp=0.3),
+        _segment(420, 540, 0.14, wave_shape="sine", amp=0.3),
     ])
 
 
