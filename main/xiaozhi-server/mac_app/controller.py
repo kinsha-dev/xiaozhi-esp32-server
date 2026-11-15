@@ -42,6 +42,7 @@ class Controller:
         self.mic_level = 0.0
         self.earphones_active = False  # Bluetooth headset is the mic and nothing else plays: the Mac app takes over from the board
         self._bt_input = False
+        self._devices = None
         self._earphone_tick = 0
         self._confused_until = 0.0
         self._voice_animation = None  # None until read; the menu redraw must not stat the file at 20 Hz
@@ -198,6 +199,11 @@ class Controller:
             try:
                 if self._earphone_tick % 5 == 0:
                     self._bt_input = earphones.bluetooth_input()
+                    devices = earphones.default_devices()
+                    if devices is not None and devices != self._devices:
+                        first, self._devices = self._devices is None, devices
+                        if not first:
+                            self._reopen_audio()  # the default mic/speaker changed: PortAudio keeps the old ones until reopened
                 self._earphone_tick += 1
                 other = earphones.other_audio_playing({os.getpid()}) if self._bt_input else False
                 if self.update_earphones(self._bt_input, other):

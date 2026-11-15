@@ -5,6 +5,10 @@ speaker. A tone is generated locally, never the server's TTS audio, so it plays 
 of which speaker backend (`Speaker` or `SaySpeaker`) the app is using for spoken replies. `stop()` cuts
 off a tone started here so it cannot keep sounding over the start of a spoken reply.
 """
+import os
+import subprocess
+import tempfile
+import wave
 from typing import Callable
 
 import numpy as np
@@ -14,16 +18,29 @@ from core.utils.tones import RATE, synth_pcm
 _default_playing = False
 
 
-def _play_default(samples, rate) -> None:
-    import sounddevice as sd
+_proc = None
 
-    sd.play(samples, rate)
+
+def _play_default(samples, rate) -> None:
+    """Play through macOS `afplay`, which follows the CURRENT system output (Bluetooth earphones included);
+    PortAudio's default output is fixed when it initialises and kept sending tones to the Mac speakers."""
+    global _proc
+    _stop_default()
+    fd, path = tempfile.mkstemp(suffix=".wav", prefix="vibi-tone-")
+    with os.fdopen(fd, "wb") as f, wave.open(f, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(np.asarray(samples, dtype=np.int16).tobytes())
+    _proc = subprocess.Popen(["/bin/sh", "-c", 'afplay "$1"; rm -f "$1"', "sh", path],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _stop_default() -> None:
-    import sounddevice as sd
-
-    sd.stop()
+    global _proc
+    proc, _proc = _proc, None
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
 
 
 def play_tone(kind: str, player: Callable[[np.ndarray, int], None] = None) -> None:
