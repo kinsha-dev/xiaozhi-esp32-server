@@ -154,7 +154,8 @@ def whisper_transcriber(model: str = "") -> Callable[[np.ndarray], str]:
         if segs:
             no_speech = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
             avg_logprob = sum(s.get("avg_logprob", 0.0) for s in segs) / len(segs)
-            if no_speech > 0.5 or avg_logprob < -0.8:
+            if no_speech > 0.6 or avg_logprob < -1.3:
+                print(f"[wake] rejected {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
                 return ""
         return result["text"]
 
