@@ -8,7 +8,7 @@ import time
 import numpy as np
 from typing import Callable
 
-from mac_app import earphones, tones
+from mac_app import earphones, tones, wake
 from mac_app.audio import AudioError, refresh_devices
 from mac_app.outbox import watch
 
@@ -18,6 +18,7 @@ EARPHONE_CHECK_S = 3.0  # how often to look for other audio playing; the Bluetoo
 # One confused chirp per missed wake, then quiet. Without this, TV and nearby conversation
 # would chirp on every transcribed sentence (and a sticky detector result chirped every frame).
 CONFUSED_COOLDOWN_S = 20.0
+PENDING_TONE_COOLDOWN_S = 300.0  # the notification chirp repeats at most every 5 minutes while messages wait
 
 
 class Controller:
@@ -197,6 +198,8 @@ class Controller:
     def _watch_earphones(self):
         while not self._stop.wait(EARPHONE_CHECK_S):
             try:
+                if self.error and self.error.startswith("microphone") and not self.muted:
+                    self._start_mic()  # a reopen during a device switch can fail (-50); keep trying until it takes
                 if self._earphone_tick % 5 == 0:
                     self._bt_input = earphones.bluetooth_input()
                     devices = earphones.default_devices()
@@ -205,7 +208,9 @@ class Controller:
                         if not first:
                             self._reopen_audio()  # the default mic/speaker changed: PortAudio keeps the old ones until reopened
                 self._earphone_tick += 1
-                other = earphones.other_audio_playing({os.getpid()}) if self._bt_input else False
+                everything_else = earphones.other_audio_playing({os.getpid()})
+                wake.background_audio = everything_else  # strict wake filtering only while something else is playing
+                other = everything_else if self._bt_input else False
                 if self.update_earphones(self._bt_input, other):
                     self._reopen_audio()
             except Exception:
@@ -349,7 +354,9 @@ class Controller:
             self._notify("vibi has a message (muted)")
             return  # mute is silence; the notification is the only signal
         if not self.auto_speak():
-            if not self._active and not self._speaker.is_busy():
+            now = time.monotonic()
+            if not self._active and not self._speaker.is_busy() and now >= getattr(self, "_pending_tone_until", 0.0):
+                self._pending_tone_until = now + PENDING_TONE_COOLDOWN_S
                 tones.play_tone("pending")  # waits for "hi vibi"; don't chirp over a reply already playing
             return
         self.start_session("hi bibi", auto=True)
