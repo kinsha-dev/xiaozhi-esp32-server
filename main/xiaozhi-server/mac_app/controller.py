@@ -291,6 +291,20 @@ class Controller:
         except (OSError, TypeError):
             pass
 
+    def voice_animation_enabled(self) -> bool:
+        """Whether the floating wave overlay shows while vibi listens/thinks/speaks. On by default;
+        menu toggle, kept in data/voice_animation."""
+        try:
+            return (self.cfg.data_dir / "voice_animation").read_text().strip() != "0"
+        except (OSError, AttributeError, TypeError):
+            return True
+
+    def set_voice_animation(self, on: bool):
+        try:
+            (self.cfg.data_dir / "voice_animation").write_text("1" if on else "0")
+        except (OSError, TypeError):
+            pass
+
     def on_pending(self):
         if self.defer_to_board():
             return  # the board speaks it

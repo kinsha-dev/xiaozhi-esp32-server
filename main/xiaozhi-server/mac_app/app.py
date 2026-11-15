@@ -103,10 +103,12 @@ def main():
             self._show_link(ctl.board_link())
             self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
             self.auto.state = ctl.auto_speak()
+            self.animation = rumps.MenuItem("Voice animation", callback=self.on_animation)
+            self.animation.state = ctl.voice_animation_enabled()
             self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
             self.remote = rumps.MenuItem("Remote tunnel: off (click to start)", callback=self.on_remote)
             self.remote_copy = rumps.MenuItem("Copy remote link", callback=self.on_copy_remote)
-            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.device_menu, self.link_menu, self.auto, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -117,7 +119,7 @@ def main():
             self._show_remote()
             self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
             try:
-                overlay.update(s)
+                overlay.update(s if ctl.voice_animation_enabled() else "idle")  # "idle": hidden when disabled
             except Exception as e:  # never let the overlay break the menu bar
                 print(f"[overlay] {e}", flush=True)
             self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
@@ -157,6 +159,10 @@ def main():
         def on_auto(self, item):
             item.state = not item.state
             ctl.set_auto_speak(bool(item.state))
+
+        def on_animation(self, item):
+            item.state = not item.state
+            ctl.set_voice_animation(bool(item.state))
 
         def on_mute(self, item):
             item.state = not item.state

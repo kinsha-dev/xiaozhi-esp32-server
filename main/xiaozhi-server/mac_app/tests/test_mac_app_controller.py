@@ -149,6 +149,22 @@ def test_pending_plays_tone_when_muted(monkeypatch):
     ctl.stop()
 
 
+def test_voice_animation_enabled_by_default():
+    ctl, _ = make()
+    assert ctl.voice_animation_enabled() is True
+    ctl.stop()
+
+
+def test_voice_animation_toggle_persists(tmp_path):
+    ctl, _ = make()
+    ctl.cfg.data_dir = tmp_path
+    ctl.set_voice_animation(False)
+    assert ctl.voice_animation_enabled() is False
+    ctl.set_voice_animation(True)
+    assert ctl.voice_animation_enabled() is True
+    ctl.stop()
+
+
 def test_pending_does_not_play_tone_when_starting_a_session(monkeypatch):
     import tempfile
     from pathlib import Path
