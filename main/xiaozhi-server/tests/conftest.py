@@ -318,8 +318,14 @@ def _install_mock_layer() -> None:
     # 短化 asyncio.sleep 避免重试循环拖时间。
     import asyncio
 
-    async def _fast_sleep(_seconds):
-        return None
+    _real_sleep = asyncio._real_sleep = getattr(asyncio, "_real_sleep", asyncio.sleep)
+
+    async def _fast_sleep(_seconds, result=None):
+        # Must still yield to the event loop: a no-yield sleep turns every
+        # `while True: ...; await asyncio.sleep(x)` loop into a hot spin that
+        # starves the loop and grows queues without bound (GBs of RAM).
+        await _real_sleep(0)
+        return result
 
     asyncio.sleep = _fast_sleep  # type: ignore[assignment]
 
