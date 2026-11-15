@@ -18,6 +18,7 @@ EARPHONE_CHECK_S = 3.0  # how often to look for other audio playing; the Bluetoo
 # One confused chirp per missed wake, then quiet. Without this, TV and nearby conversation
 # would chirp on every transcribed sentence (and a sticky detector result chirped every frame).
 CONFUSED_COOLDOWN_S = 20.0
+PENDING_TONE_COOLDOWN_S = 300.0  # the notification chirp repeats at most every 5 minutes while messages wait
 
 
 class Controller:
@@ -351,7 +352,9 @@ class Controller:
             self._notify("vibi has a message (muted)")
             return  # mute is silence; the notification is the only signal
         if not self.auto_speak():
-            if not self._active and not self._speaker.is_busy():
+            now = time.monotonic()
+            if not self._active and not self._speaker.is_busy() and now >= getattr(self, "_pending_tone_until", 0.0):
+                self._pending_tone_until = now + PENDING_TONE_COOLDOWN_S
                 tones.play_tone("pending")  # waits for "hi vibi"; don't chirp over a reply already playing
             return
         self.start_session("hi bibi", auto=True)
