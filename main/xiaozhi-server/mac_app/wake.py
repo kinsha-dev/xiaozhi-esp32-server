@@ -142,7 +142,16 @@ def whisper_transcriber(model: str = "") -> Callable[[np.ndarray], str]:
             # noise segment kept the whole Mac at 250%+ CPU.
             torch.set_num_threads(int(os.environ.get("MAC_APP_WAKE_THREADS", "2")))
             _model = whisper.load_model(model or os.environ.get("MAC_APP_WAKE_MODEL", "base"))
-        return _model.transcribe(audio, fp16=False, language="en", condition_on_previous_text=False,
-                                  initial_prompt="Hi bibi. Hey bibi.")["text"]
+        result = _model.transcribe(audio, fp16=False, language="en", condition_on_previous_text=False,
+                                    initial_prompt="Hi bibi. Hey bibi.")
+        # The initial_prompt above biases Whisper toward "hi bibi"-shaped text even on music or noise with no
+        # real speech in it; when Whisper itself is not confident it heard speech, don't trust the words it typed.
+        segs = result.get("segments") or []
+        if segs:
+            no_speech = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
+            avg_logprob = sum(s.get("avg_logprob", 0.0) for s in segs) / len(segs)
+            if no_speech > 0.5 or avg_logprob < -0.8:
+                return ""
+        return result["text"]
 
     return transcribe

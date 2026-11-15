@@ -93,7 +93,7 @@ async def startToChat(conn: "ConnectionHandler", text):
     else:
         conn.current_speaker = None
 
-    if audio_device.is_board(conn) and conn.client_listen_mode != "manual":
+    if conn.client_listen_mode != "manual":
         from core.utils import name_filter
 
         heard = actual_text
