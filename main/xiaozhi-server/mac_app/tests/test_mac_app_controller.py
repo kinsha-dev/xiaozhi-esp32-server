@@ -25,8 +25,16 @@ class FakeMic:
 
 
 class FakeDetector:
+    def __init__(self):
+        self.last_result = None
+
     def feed(self, frame):
-        return frame == b"WAKE"
+        if frame == b"WAKE":
+            self.last_result = "matched"
+            return True
+        if frame == b"NEARMISS":  # even length: must still parse as int16 PCM in _on_mic
+            self.last_result = "no_match"
+        return False
 
 
 class FakeSession:
@@ -108,4 +116,48 @@ def test_pending_opens_session_when_not_muted():
 def test_mic_failure_sets_error_state():
     ctl, _ = make(fail=True)
     assert ctl.error and ctl.display_state() == "error"
+    ctl.stop()
+
+
+def test_wake_near_miss_plays_confused_tone(monkeypatch):
+    played = []
+    monkeypatch.setattr("mac_app.controller.tones.play_tone", lambda kind: played.append(kind))
+    ctl, _ = make()
+    ctl._on_mic(b"NEARMISS")
+    assert wait(lambda: played == ["confused"])
+    assert FakeSession.runs == []
+    ctl.stop()
+
+
+def test_pending_plays_tone_when_waiting_for_hi_vibi(monkeypatch):
+    played = []
+    monkeypatch.setattr("mac_app.controller.tones.play_tone", lambda kind: played.append(kind))
+    ctl, _ = make()
+    ctl.on_pending()
+    assert played == ["pending"]
+    assert FakeSession.runs == []
+    ctl.stop()
+
+
+def test_pending_plays_tone_when_muted(monkeypatch):
+    played = []
+    monkeypatch.setattr("mac_app.controller.tones.play_tone", lambda kind: played.append(kind))
+    ctl, notes = make()
+    ctl.set_muted(True)
+    ctl.on_pending()
+    assert played == ["pending"] and len(notes) == 1
+    ctl.stop()
+
+
+def test_pending_does_not_play_tone_when_starting_a_session(monkeypatch):
+    import tempfile
+    from pathlib import Path
+    played = []
+    monkeypatch.setattr("mac_app.controller.tones.play_tone", lambda kind: played.append(kind))
+    ctl, _ = make()
+    ctl.cfg.data_dir = Path(tempfile.mkdtemp())
+    ctl.set_auto_speak(True)
+    ctl.on_pending()
+    assert wait(lambda: FakeSession.runs == ["hi bibi"])
+    assert played == []
     ctl.stop()

@@ -1256,6 +1256,13 @@ class ConnectionHandler:
                     content_detail=tail,
                 )
             )
+        elif ignore_gate.matched and not tool_call_flag:
+            # [ignore] (background chatter) or [ack] (a bare "okay"/"got it" not worth speaking):
+            # a tone instead of the usual total silence or a spoken acknowledgment
+            from core.utils.tones import play_tone
+
+            tone = "confused" if ignore_gate.matched == "ignore" else "confirm"
+            asyncio.run_coroutine_threadsafe(play_tone(self, tone), self.loop)
         # 处理function call
         if tool_call_flag:
             bHasError = False

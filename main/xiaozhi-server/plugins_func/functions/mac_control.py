@@ -441,6 +441,17 @@ confirm_action_desc = {
 }
 
 
+def _play_tone(conn, kind):
+    """Best-effort: a missing conn/loop (e.g. a unit test) must never break the action itself."""
+    try:
+        import asyncio
+        from core.utils.tones import play_tone
+
+        asyncio.run_coroutine_threadsafe(play_tone(conn, kind), conn.loop)
+    except Exception:
+        pass
+
+
 @register_function("confirm_action", confirm_action_desc, ToolType.SYSTEM_CTL)
 def confirm_action(conn, token=None):
     with _lock:
@@ -449,8 +460,10 @@ def confirm_action(conn, token=None):
     if item is None or item["expires"] < _now():
         return ActionResponse(Action.RESPONSE, "nothing pending or expired", "Nothing is waiting for confirmation, or it has expired. Please ask again.")
     if item["kind"] == "claude_write":
+        _play_tone(conn, "action")
         return _run_claude(item["args"]["task"], write=True, project=item["args"].get("project"))
     if item["kind"] == "pi_write":
+        _play_tone(conn, "action")
         return _run_pi(item["args"]["task"], write=True, project=item["args"].get("project"))
     if item["kind"] == "mac":
         a = item["args"]
@@ -458,10 +471,12 @@ def confirm_action(conn, token=None):
         clean, err = _validate(a["action"], a["arg"])
         if err:
             return ActionResponse(Action.RESPONSE, err, err)
+        _play_tone(conn, "action")
         try:
             return _execute(a["action"], clean)
         except (OSError, subprocess.TimeoutExpired) as e:
             return ActionResponse(Action.RESPONSE, f"error: {e}", "That didn't work.")
     if item["kind"] in _handlers:
+        _play_tone(conn, "action")
         return _handlers[item["kind"]](item["args"])
     return ActionResponse(Action.RESPONSE, "unknown pending", "Nothing to confirm.")

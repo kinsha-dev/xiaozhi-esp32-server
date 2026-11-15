@@ -8,7 +8,7 @@ import time
 import numpy as np
 from typing import Callable
 
-from mac_app import earphones
+from mac_app import earphones, tones
 from mac_app.audio import AudioError, refresh_devices
 from mac_app.outbox import watch
 
@@ -273,6 +273,8 @@ class Controller:
                 continue
             if self._detector.feed(frame):
                 self.start_session(getattr(self._detector, "command", "") or "hi bibi")
+            elif getattr(self._detector, "last_result", None) == "no_match":
+                tones.play_tone("confused")  # heard speech, but not the wake phrase: a confused chirp, not silence
 
     # --- sessions ----------------------------------------------------------------------------
     def auto_speak(self) -> bool:
@@ -294,8 +296,9 @@ class Controller:
             return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
+            tones.play_tone("pending")
         elif not self.auto_speak():
-            return  # waits for "hi vibi"; the server adds the waiting updates to that wake
+            tones.play_tone("pending")  # waits for "hi vibi"; the server adds the waiting updates to that wake
         else:
             self.start_session("hi bibi", auto=True)
 
