@@ -1158,6 +1158,7 @@ class ConnectionHandler:
         content_arguments = ""
         emotion_flag = True
         ignore_gate = IgnoreGate()
+        closing_tone = False
         try:
             for response in llm_responses:
                 if self.client_abort:
@@ -1215,7 +1216,7 @@ class ConnectionHandler:
 
                 if content is not None and len(content) > 0:
                     if not tool_call_flag:
-                        content = ignore_gate.feed(content)  # "[ignore]" = background chatter: say nothing
+                        content = ignore_gate.feed(content)  # "[ignore]" drops the reply; a bare "[ack]" does too
                     if content and not tool_call_flag:
                         response_message.append(content)
                         self.tts.tts_text_queue.put(
@@ -1256,13 +1257,17 @@ class ConnectionHandler:
                     content_detail=tail,
                 )
             )
-        elif ignore_gate.matched and not tool_call_flag:
-            # [ignore] (background chatter) or [ack] (a bare "okay"/"got it" not worth speaking):
-            # a tone instead of the usual total silence or a spoken acknowledgment
-            from core.utils.tones import play_tone
+        elif not tool_call_flag:
+            # Bare [ignore] / [ack] only. "[ack] Done, timer set" already passed through feed()
+            # as speech, so matched is None and the reply keeps its own stop.
+            from core.utils.tones import play_tone, take_closing_tone
 
-            tone = "confused" if ignore_gate.matched == "ignore" else "confirm"
-            asyncio.run_coroutine_threadsafe(play_tone(self, tone), self.loop)
+            kind = take_closing_tone(self, ignore_gate.matched, self.client_abort)
+            if kind:
+                closing_tone = True  # this tone sends the only stop; the LAST below would collide with it
+                asyncio.run_coroutine_threadsafe(
+                    play_tone(self, kind, close_turn=True), self.loop
+                )
         # 处理function call
         if tool_call_flag:
             bHasError = False
@@ -1403,7 +1408,7 @@ class ConnectionHandler:
             self.tts.store_tts_text(current_sentence_id, text_buff)
             self.dialogue.put(Message(role="assistant", content=text_buff))
 
-        if depth == 0:
+        if depth == 0 and not closing_tone:
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
                     sentence_id=current_sentence_id,

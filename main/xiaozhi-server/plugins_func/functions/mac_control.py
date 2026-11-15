@@ -442,12 +442,21 @@ confirm_action_desc = {
 
 
 def _play_tone(conn, kind):
-    """Best-effort: a missing conn/loop (e.g. a unit test) must never break the action itself."""
+    """Best-effort: a missing conn/loop (e.g. a unit test) must never break the action itself.
+
+    close_turn stays false: the spoken result follows, and it sends the turn's only stop.
+    """
     try:
         import asyncio
         from core.utils.tones import play_tone
 
-        asyncio.run_coroutine_threadsafe(play_tone(conn, kind), conn.loop)
+        loop = conn.loop
+        tone = play_tone(conn, kind, close_turn=False)
+        try:
+            asyncio.run_coroutine_threadsafe(tone, loop)
+        except Exception:
+            tone.close()  # scheduling failed: don't leak an un-awaited coroutine
+            raise
     except Exception:
         pass
 

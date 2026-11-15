@@ -20,3 +20,16 @@ def test_play_tone_calls_player_with_rate():
     calls = []
     tones.play_tone("pending", player=lambda samples, rate: calls.append((len(samples), rate)))
     assert calls and calls[0][0] > 0 and calls[0][1] == tones.RATE
+
+
+def test_stop_halts_only_a_default_playback(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tones, "_play_default", lambda samples, rate: calls.append("play"))
+    monkeypatch.setattr(tones, "_stop_default", lambda: calls.append("stop"))
+    tones.play_tone("action", player=lambda samples, rate: None)
+    tones.stop()
+    assert calls == []  # a test/custom player is not the output device
+    tones.play_tone("action")
+    tones.stop()
+    tones.stop()
+    assert calls == ["play", "stop"]

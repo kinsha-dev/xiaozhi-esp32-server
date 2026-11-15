@@ -15,6 +15,9 @@ from mac_app.outbox import watch
 TAIL_S = 0.25  # ignore the mic this long after our own speech / a session
 HEARTBEAT_TIMEOUT = 300  # seconds without a board heartbeat before the menu bar shows X
 EARPHONE_CHECK_S = 3.0  # how often to look for other audio playing; the Bluetooth check runs every 5th time
+# One confused chirp per missed wake, then quiet. Without this, TV and nearby conversation
+# would chirp on every transcribed sentence (and a sticky detector result chirped every frame).
+CONFUSED_COOLDOWN_S = 20.0
 
 
 class Controller:
@@ -40,6 +43,8 @@ class Controller:
         self.earphones_active = False  # Bluetooth headset is the mic and nothing else plays: the Mac app takes over from the board
         self._bt_input = False
         self._earphone_tick = 0
+        self._confused_until = 0.0
+        self._voice_animation = None  # None until read; the menu redraw must not stat the file at 20 Hz
 
     # --- lifecycle ---------------------------------------------------------------------------
     def _flag(self):
@@ -270,11 +275,31 @@ class Controller:
             except queue.Empty:
                 continue
             if self.muted or self._active or self.defer_to_board() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
+                if self._active or self._speaker.is_busy():
+                    tones.stop()  # a chirp that already started must not keep playing over the reply
                 continue
-            if self._detector.feed(frame):
+            matched_wake = self._detector.feed(frame)
+            result = self._consume_wake_result()
+            if matched_wake:
                 self.start_session(getattr(self._detector, "command", "") or "hi bibi")
-            elif getattr(self._detector, "last_result", None) == "no_match":
-                tones.play_tone("confused")  # heard speech, but not the wake phrase: a confused chirp, not silence
+            elif result == "no_match":
+                self._chirp_confused()
+
+    def _consume_wake_result(self):
+        """The detector leaves last_result set until the next finished segment. Read it once."""
+        result = getattr(self._detector, "last_result", None)
+        if result is not None:
+            self._detector.last_result = None
+        return result
+
+    def _chirp_confused(self):
+        if self.muted or self._active or self._speaker.is_busy():
+            return
+        now = time.monotonic()
+        if now < self._confused_until:
+            return
+        self._confused_until = now + CONFUSED_COOLDOWN_S
+        tones.play_tone("confused")
 
     # --- sessions ----------------------------------------------------------------------------
     def auto_speak(self) -> bool:
@@ -293,13 +318,19 @@ class Controller:
 
     def voice_animation_enabled(self) -> bool:
         """Whether the floating wave overlay shows while vibi listens/thinks/speaks. On by default;
-        menu toggle, kept in data/voice_animation."""
+        menu toggle, kept in data/voice_animation. Cached: the menu redraw calls this every 50 ms."""
+        if self._voice_animation is None:
+            self._voice_animation = self._read_voice_animation()
+        return self._voice_animation
+
+    def _read_voice_animation(self) -> bool:
         try:
             return (self.cfg.data_dir / "voice_animation").read_text().strip() != "0"
         except (OSError, AttributeError, TypeError):
             return True
 
     def set_voice_animation(self, on: bool):
+        self._voice_animation = bool(on)
         try:
             (self.cfg.data_dir / "voice_animation").write_text("1" if on else "0")
         except (OSError, TypeError):
@@ -310,16 +341,18 @@ class Controller:
             return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
-            tones.play_tone("pending")
-        elif not self.auto_speak():
-            tones.play_tone("pending")  # waits for "hi vibi"; the server adds the waiting updates to that wake
-        else:
-            self.start_session("hi bibi", auto=True)
+            return  # mute is silence; the notification is the only signal
+        if not self.auto_speak():
+            if not self._active and not self._speaker.is_busy():
+                tones.play_tone("pending")  # waits for "hi vibi"; don't chirp over a reply already playing
+            return
+        self.start_session("hi bibi", auto=True)
 
     def start_session(self, text: str, auto: bool = False, force: bool = False) -> bool:
         with self._lock:
             if self._active or self.muted or (self.defer_to_board() and not force):  # force: Vibi Ctrl rerun
                 return False
+            tones.stop()  # a confused or pending chirp must not keep playing over the reply
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
         asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto), self._loop)

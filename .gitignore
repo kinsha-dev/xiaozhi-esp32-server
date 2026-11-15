@@ -144,6 +144,9 @@ dmypy.json
 # music directory
 music/
 
+# Synthesized R2D2 feedback tones. Rebuilt on demand; the filename includes a hash of the PCM.
+main/xiaozhi-server/config/assets/tones/
+
 # pytype static type analyzer
 .pytype/
 

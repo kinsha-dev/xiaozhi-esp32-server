@@ -205,6 +205,8 @@ class MacControlTests(unittest.TestCase):
         kinds = [c.args[1] for c in play_tone.call_args_list]
         self.assertEqual(kinds, ["action"])  # one tone, not a separate "confirm" chirp first
         self.assertIs(play_tone.call_args_list[0].args[0], conn)
+        # The spoken result follows this chirp, so the chirp must not send the turn's stop.
+        self.assertFalse(play_tone.call_args.kwargs.get("close_turn", False))
 
     def test_confirm_action_tone_failure_is_swallowed(self):
         """No conn/loop (e.g. a plain unittest double) must never break the action itself."""
