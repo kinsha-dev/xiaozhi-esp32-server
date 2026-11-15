@@ -93,7 +93,9 @@ async def startToChat(conn: "ConnectionHandler", text):
     else:
         conn.current_speaker = None
 
-    if conn.client_listen_mode != "manual":
+    # The Mac app checks for "hi vibi" itself before it opens a session, so everything said in that open session is for
+    # Vibi; only the board (always listening) needs the name filter here.
+    if audio_device.is_board(conn) and conn.client_listen_mode != "manual":
         from core.utils import name_filter
 
         heard = actual_text
@@ -102,11 +104,6 @@ async def startToChat(conn: "ConnectionHandler", text):
                 heard = json.loads(heard).get("content", heard)
         except (ValueError, AttributeError):
             pass
-        if not audio_device.is_board(conn) and not getattr(conn, "_mac_wake_seen", False):
-            # The Mac app only opens a session after it heard "hi vibi" itself and sends the rest as the command, so the
-            # session's first turn has no name in it by design; later turns need the name or the follow-up window.
-            conn._mac_wake_seen = True
-            conn._followup_until = time.time() + name_filter.FOLLOWUP_S
         if not name_filter.should_answer(heard, getattr(conn, "_followup_until", 0.0)):
             conn.logger.bind(tag=TAG).info(f"Ignored (no \"Vibi\" in it): {str(heard)[:80]}")
             return
