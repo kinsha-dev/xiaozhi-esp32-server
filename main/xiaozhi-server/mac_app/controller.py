@@ -197,6 +197,8 @@ class Controller:
     def _watch_earphones(self):
         while not self._stop.wait(EARPHONE_CHECK_S):
             try:
+                if self.error and self.error.startswith("microphone") and not self.muted:
+                    self._start_mic()  # a reopen during a device switch can fail (-50); keep trying until it takes
                 if self._earphone_tick % 5 == 0:
                     self._bt_input = earphones.bluetooth_input()
                     devices = earphones.default_devices()
