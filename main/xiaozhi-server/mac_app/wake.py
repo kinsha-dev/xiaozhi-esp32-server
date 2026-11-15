@@ -61,6 +61,7 @@ class WakeDetector:
         self._noise = None  # running rms of non-speech frames
         self._mode = None
         self.command = ""  # text spoken after the wake phrase in the segment that last matched
+        self.last_result = None  # None | "too_quiet" | "no_match" | "matched": outcome of the last finished segment
         self._reset()
 
     def _reset(self):
@@ -120,12 +121,15 @@ class WakeDetector:
         if t > 0 and self._noise:
             min_peak = max(min_peak, self._noise * 4 * t)  # in noise the voice must clearly stand out
         if peak < min_peak:
+            self.last_result = "too_quiet"  # room noise, not a speech attempt: stays silent, no tone
             return False
         if peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
             audio = audio * (0.5 / peak)
         heard = self._transcribe(audio)
         self.command = wake_command(heard, self._phrase)
-        return matches_wake(heard, self._phrase)
+        matched = matches_wake(heard, self._phrase)
+        self.last_result = "matched" if matched else "no_match"
+        return matched
 
 
 _model = None

@@ -88,3 +88,28 @@ def test_room_noise_is_not_transcribed():
     det, calls = make()
     feed_all(det, [noise] * 15 + [SILENCE] * 25)
     assert calls == []
+
+
+def test_last_result_matched_on_wake_phrase():
+    det, _ = make("hi bibi")
+    feed_all(det, [SPEECH] * 15 + [SILENCE] * 25)
+    assert det.last_result == "matched"
+
+
+def test_last_result_no_match_on_transcribed_near_miss():
+    det, _ = make("thank you")
+    feed_all(det, [SPEECH] * 15 + [SILENCE] * 25)
+    assert det.last_result == "no_match"
+
+
+def test_last_result_too_quiet_when_never_transcribed():
+    noise = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 300).astype(np.int16).tobytes()
+    det, calls = make()
+    feed_all(det, [noise] * 15 + [SILENCE] * 25)
+    assert det.last_result == "too_quiet" and calls == []
+
+
+def test_last_result_stays_none_for_a_too_short_blip():
+    det, calls = make()
+    feed_all(det, [SPEECH] * 3 + [SILENCE] * 25)  # shorter than MIN_SPEECH_FRAMES
+    assert det.last_result is None and calls == []
