@@ -8,7 +8,7 @@ import time
 import numpy as np
 from typing import Callable
 
-from mac_app import earphones, tones
+from mac_app import earphones, tones, wake
 from mac_app.audio import AudioError, refresh_devices
 from mac_app.outbox import watch
 
@@ -208,7 +208,9 @@ class Controller:
                         if not first:
                             self._reopen_audio()  # the default mic/speaker changed: PortAudio keeps the old ones until reopened
                 self._earphone_tick += 1
-                other = earphones.other_audio_playing({os.getpid()}) if self._bt_input else False
+                everything_else = earphones.other_audio_playing({os.getpid()})
+                wake.background_audio = everything_else  # strict wake filtering only while something else is playing
+                other = everything_else if self._bt_input else False
                 if self.update_earphones(self._bt_input, other):
                     self._reopen_audio()
             except Exception:

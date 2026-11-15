@@ -125,6 +125,8 @@ class WakeDetector:
             return False
         if peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
             audio = audio * (0.5 / peak)
+        if background_audio:
+            audio = denoise(audio)
         heard = self._transcribe(audio)
         self.command = wake_command(heard, self._phrase)
         matched = matches_wake(heard, self._phrase)
@@ -132,7 +134,31 @@ class WakeDetector:
         return matched
 
 
+def denoise(audio: np.ndarray) -> np.ndarray:
+    """Noise-cancel a wake segment while other audio (music, video) plays: keep the speech band, then spectral-gate.
+
+    The steady part of the background (the per-frequency floor across the segment) is subtracted, so a voice that
+    rises above it stays and the music bed under it is pushed down.
+    """
+    from scipy.signal import butter, sosfiltfilt, stft, istft
+
+    if audio.size < RATE // 2:
+        return audio
+    audio = sosfiltfilt(butter(4, [150, 3800], btype="band", fs=RATE, output="sos"), audio)
+    _, _, Z = stft(audio, fs=RATE, nperseg=512)
+    mag = np.abs(Z)
+    floor = np.percentile(mag, 30, axis=1, keepdims=True)  # what each frequency does when nobody speaks over it
+    gain = np.clip((mag - 1.5 * floor) / (mag + 1e-9), 0.05, 1.0)
+    _, out = istft(Z * gain, fs=RATE, nperseg=512)
+    out = out[: audio.size].astype(np.float32)
+    peak = float(np.abs(out).max())
+    return out * (0.5 / peak) if 0 < peak < 0.5 else out
+
+
 _model = None
+
+
+background_audio = False  # set by the Controller while another app is playing sound on the Mac (music, video, TV)
 
 
 def whisper_transcriber(model: str = "") -> Callable[[np.ndarray], str]:
@@ -154,8 +180,13 @@ def whisper_transcriber(model: str = "") -> Callable[[np.ndarray], str]:
         if segs:
             no_speech = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
             avg_logprob = sum(s.get("avg_logprob", 0.0) for s in segs) / len(segs)
-            if no_speech > 0.6 or avg_logprob < -1.3:
-                # Logged only: the "bibi" phrase match decides the wake, a confidence cutoff must never block a real "hi vibi".
+            if background_audio:
+                # Music/video in the background makes Whisper type "hi bibi"-shaped text from the prompt: be strict.
+                if no_speech > 0.5 or avg_logprob < -0.8:
+                    print(f"[wake] rejected (background audio) {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
+                    return ""
+            elif no_speech > 0.6 or avg_logprob < -1.3:
+                # Quiet room: logged only, the "bibi" match decides, a confidence cutoff must never block a real "hi vibi".
                 print(f"[wake] low confidence {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
         return result["text"]
 
