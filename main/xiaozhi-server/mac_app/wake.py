@@ -155,8 +155,8 @@ def whisper_transcriber(model: str = "") -> Callable[[np.ndarray], str]:
             no_speech = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
             avg_logprob = sum(s.get("avg_logprob", 0.0) for s in segs) / len(segs)
             if no_speech > 0.6 or avg_logprob < -1.3:
-                print(f"[wake] rejected {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
-                return ""
+                # Logged only: the "bibi" phrase match decides the wake, a confidence cutoff must never block a real "hi vibi".
+                print(f"[wake] low confidence {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
         return result["text"]
 
     return transcribe
