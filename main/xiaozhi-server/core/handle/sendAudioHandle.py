@@ -22,6 +22,15 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
     if sentence_id is not None and sentence_id != conn.sentence_id:
         return
 
+    # Real reply audio, a closing tone, or an action chirp. The thinking loop
+    # is the one task that must not stop itself mid-send. Anyone else drops
+    # unsent modem packets before queueing this audio, and does not send tts
+    # stop — that would end the turn and the board would drop the reply.
+    if asyncio.current_task() is not getattr(conn, "_feedback_task", None):
+        from core.utils.tones import stop_turn_feedback
+
+        await stop_turn_feedback(conn)
+
     if conn.tts.tts_audio_first_sentence:
         conn.logger.bind(tag=TAG).info(f"发送第一段语音: {text}")
         conn.tts.tts_audio_first_sentence = False
@@ -352,7 +361,10 @@ async def send_stt_message(conn: "ConnectionHandler", text):
     await conn.websocket.send(
         json.dumps({"type": "stt", "text": stt_text, "session_id": conn.session_id})
     )
-    await send_tts_message(conn, "start")
+    # Feedback already sent "start" so the ack could play. A second start makes
+    # the board enter speaking again and reset its decoder, which drops the ack.
+    if not getattr(conn, "_feedback_turn_open", False):
+        await send_tts_message(conn, "start")
     # 发送start消息后客户端状态会处于说话中状态，同步服务端状态
     conn.client_is_speaking = True
 

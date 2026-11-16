@@ -1066,8 +1066,16 @@ class ConnectionHandler:
 
         # 为最顶层时新建会话ID和发送FIRST请求
         if depth == 0:
-            current_sentence_id = str(uuid.uuid4().hex)
-            self.sentence_id = current_sentence_id  # 更新共享属性
+            from core.utils.tones import take_prepared_sentence_id
+
+            prepared = take_prepared_sentence_id(self)
+            if prepared:
+                # Feedback already claimed this id. A new one would reset the rate
+                # controller and cut off the wake ack or the thinking loop.
+                current_sentence_id = prepared
+            else:
+                current_sentence_id = str(uuid.uuid4().hex)
+                self.sentence_id = current_sentence_id  # 更新共享属性
             self.dialogue.put(Message(role="user", content=query))
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
@@ -1149,6 +1157,9 @@ class ConnectionHandler:
                 )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM 处理出错 {query}: {e}")
+            from core.utils.tones import stop_turn_feedback_threadsafe
+
+            stop_turn_feedback_threadsafe(self)  # no audio will follow; don't leave the loop running
             return None
 
         # 处理流式响应
@@ -1574,6 +1585,9 @@ class ConnectionHandler:
     async def close(self, ws=None):
         """资源清理方法"""
         try:
+            from core.utils.tones import stop_turn_feedback
+
+            await stop_turn_feedback(self)
             # 清理 VAD 连接资源
             if (
                     hasattr(self, "vad")

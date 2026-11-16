@@ -94,6 +94,7 @@ async def startToChat(conn: "ConnectionHandler", text):
     else:
         conn.current_speaker = None
 
+    passed_name_filter = False
     if conn.client_listen_mode != "manual":
         from core.utils import name_filter
 
@@ -112,6 +113,7 @@ async def startToChat(conn: "ConnectionHandler", text):
             conn.logger.bind(tag=TAG).info(f"Ignored (no \"Vibi\" in it): {str(heard)[:80]}")
             return
         conn._followup_until = time.time() + (name_filter.FOLLOWUP_S if audio_device.is_board(conn) else MAC_FOLLOWUP_S)
+        passed_name_filter = True
 
     if conn.need_bind:
         await check_bind_device(conn)
@@ -129,8 +131,27 @@ async def startToChat(conn: "ConnectionHandler", text):
     if conn.client_is_speaking and conn.client_listen_mode != "manual":
         await handleAbortMessage(conn)
 
+    # The name filter just accepted this utterance. Ack before the intent/LLM wait
+    # so the board hears it immediately. The goodbye prompt is not that moment.
+    if passed_name_filter and not conn.close_after_chat:
+        conn.client_abort = False  # the abort above ended the previous playback, not this turn
+        conn._feedback_turn_open = False
+        conn._wake_ack_played = False
+        conn._feedback_sentence_ready = False
+        from core.utils.tones import open_feedback_turn
+
+        await open_feedback_turn(conn)
+        if conn.client_abort:
+            return
+
     # 首先进行意图分析，使用实际文本内容
     intent_handled = await handle_user_intent(conn, actual_text)
+
+    if conn.client_abort:
+        from core.utils.tones import stop_turn_feedback
+
+        await stop_turn_feedback(conn)
+        return
 
     if intent_handled:
         # 如果意图已被处理，不再进行聊天
@@ -139,8 +160,10 @@ async def startToChat(conn: "ConnectionHandler", text):
     # 意图未被处理，继续常规聊天流程，使用实际文本内容
     await send_stt_message(conn, actual_text)
 
-    # 准备开始新会话
-    conn.client_abort = False
+    # 准备开始新会话. Feedback already cleared a stale abort; clearing it again
+    # would talk over a barge-in that happened while the ack was playing.
+    if not getattr(conn, "_feedback_sentence_ready", False):
+        conn.client_abort = False
 
     conn.executor.submit(conn.chat, actual_text)
 

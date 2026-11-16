@@ -4,6 +4,11 @@ Synthesis is shared with the board (`core.utils.tones`); this module only plays 
 speaker. A tone is generated locally, never the server's TTS audio, so it plays the same way regardless
 of which speaker backend (`Speaker` or `SaySpeaker`) the app is using for spoken replies. `stop()` cuts
 off a tone started here so it cannot keep sounding over the start of a spoken reply.
+
+Wake-ack and thinking tones are not played here. The server sends them as opus on the session
+websocket, and the session plays that once. Playing them again locally would double them whenever
+the Mac speaker plays server audio. The confused and pending chirps stay local because the server
+never sends those.
 """
 import os
 import subprocess
