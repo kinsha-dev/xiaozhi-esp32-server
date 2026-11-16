@@ -3,9 +3,9 @@
 # `python -m mac_app` from this checkout. macOS TCC (Microphone, Bluetooth, Accessibility, Full Disk Access)
 # is granted to this bundle, never to Terminal or the shared Python.
 #   mac_app/build_app.sh            build to a temp dir, verify, then swap into ~/Applications
-#   APP_DEST=/path/Vibi.app ...     install somewhere else; MAC_APP_PYTHON=... picks the interpreter
+#   APP_DEST=/path/Vibi.app ...     install somewhere else; MAC_APP_PYTHON=... picks the interpreter, MAC_APP_DIR=... the server dir to run
 set -eu
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DIR="${MAC_APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 PY="${MAC_APP_PYTHON:-$DIR/.venv/bin/python}"
 [ -x "$PY" ] || PY="$HOME/esp/xiaozhi-server/main/xiaozhi-server/.venv/bin/python"
 DEST="${APP_DEST:-$HOME/Applications/Vibi.app}"
