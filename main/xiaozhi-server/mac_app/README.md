@@ -32,3 +32,16 @@ The remote listener accepts a passkey login or the shared token (`data/ctrl_toke
   then write `data/ctrl_tunnel_named.json` = `{"name": "vibi-ctrl", "hostname": "ctrl.example.com"}`.
   The tunnel then starts as `cloudflared tunnel run` on that hostname and passkeys survive restarts.
 - Passkey sessions live in memory: restarting the Mac app logs remote browsers out.
+
+## Vibi.app and macOS permissions
+
+macOS grants Microphone, Bluetooth, Accessibility and Full Disk Access per app bundle, so run the app as **Vibi.app**, never from Terminal.
+`mac_app/build_app.sh` builds `~/Applications/Vibi.app`: a small C launcher (`scripts/vibi_launcher.c`) that spawns
+`.venv/bin/python -m mac_app` from this checkout as a child of the bundle, so macOS attributes the child's access to Vibi
+(id `com.voicebox.vibi`, `LSUIElement`, usage-description keys). A full PyInstaller/py2app bundle was not needed: it would
+have to freeze torch/whisper/webrtcvad/opuslib/rumps (GBs, fragile) for the same isolation.
+
+- Build from the checkout that should run: `mac_app/build_app.sh` (`MAC_APP_PYTHON`, `APP_DEST` override). It builds in a temp dir, verifies the signature, then swaps.
+- Signing is ad-hoc with a fixed designated requirement (`identifier "com.voicebox.vibi"`), so permissions granted once survive rebuilds.
+- Grant once in System Settings > Privacy & Security: Microphone, Bluetooth, Accessibility, (Full Disk Access if needed) to **Vibi** only.
+- Restart after a rebuild: kill the running mac_app python pid (`open -W` keeps the old one), then `launchctl kickstart -k gui/$(id -u)/com.voicebox.macapp`.
