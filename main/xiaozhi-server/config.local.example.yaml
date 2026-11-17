@@ -103,6 +103,10 @@ close_connection_no_voice_time: 900
 # the stock cached wake-word replies are Chinese; let the English prompt answer instead
 enable_wakeup_words_response_cache: false
 enable_greeting: false
+# Short ack when a turn is accepted, then a quiet low modem loop until the reply starts.
+# Set either to false to silence it. Omitting them leaves both on.
+enable_wake_ack_tone: true
+enable_thinking_tone: true
 prompt_template: data/english-prompt.txt
 
 system_error_response: "Sorry, I'm having trouble right now. Please try again in a moment."
