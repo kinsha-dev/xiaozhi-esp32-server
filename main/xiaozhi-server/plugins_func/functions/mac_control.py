@@ -103,10 +103,11 @@ def _load_allowlist():
     try:
         data = json.loads(ALLOWLIST.read_text())
     except (OSError, ValueError):
-        return {"apps": [], "shortcuts": []}
+        return {"apps": [], "shortcuts": [], "clicks": {}}
     return {
         "apps": [str(a) for a in data.get("apps", [])],
         "shortcuts": [str(s) for s in data.get("shortcuts", [])],
+        "clicks": data.get("clicks", {}) if isinstance(data.get("clicks"), dict) else {},
     }
 
 
@@ -333,8 +334,40 @@ def ask_claude(conn, task, allow_changes=False, project="trading"):
 # ---------------------------------------------------------------------------------------------
 # Mac actions
 # ---------------------------------------------------------------------------------------------
-ACTIONS = ("set_volume", "mute", "play_pause", "lock_screen", "open_app", "run_shortcut")
+ACTIONS = ("set_volume", "mute", "play_pause", "lock_screen", "open_app", "run_shortcut", "click")
 CONFIRM_ACTIONS = ("run_shortcut",)  # only critical actions need the spoken yes
+
+
+def _resolve_click(arg):
+    """arg is '<app> <target>', e.g. 'VIDAA netflix'. Targets come from the allowlist file's
+    "clicks": {"VIDAA": {"netflix": [fx, fy]}} (fractions of the app window). Returns
+    ((app, fx, fy), error)."""
+    cfg = _load_allowlist()
+    text = (arg or "").strip().lower()
+    for app in cfg["apps"]:
+        targets = cfg["clicks"].get(app) or {}
+        if not text.startswith(app.lower() + " "):
+            continue
+        name = text[len(app) + 1:].strip()
+        for key, pos in targets.items():
+            if key.lower() == name and isinstance(pos, list) and len(pos) == 2:
+                return (app, float(pos[0]), float(pos[1])), None
+        return None, f"I don't know a {name} button in {app}."
+    return None, "That app has no click targets."
+
+
+_CLICK_SCRIPT = """
+tell application "{app}" to activate
+delay 1.2
+tell application "System Events"
+  tell process "{app}"
+    perform action "AXRaise" of window 1
+    set {{x0, y0}} to position of window 1
+    set {{w, h}} to size of window 1
+  end tell
+  click at {{x0 + w * {fx}, y0 + h * {fy}}}
+end tell
+"""
 
 
 def _validate(action, arg):
@@ -352,6 +385,8 @@ def _validate(action, arg):
     if action == "open_app":
         app = _match(arg, _load_allowlist()["apps"])
         return (app, None) if app else (None, "That app isn't in your allowed list.")
+    if action == "click":
+        return _resolve_click(arg)
     if action == "run_shortcut":
         sc = _match(arg, _load_allowlist()["shortcuts"])
         return (sc, None) if sc else (None, "That shortcut isn't in your allowed list.")
@@ -375,6 +410,10 @@ def _execute(action, arg):
     elif action == "open_app":
         r = _run(["open", "-a", arg])
         spoken = f"Opening {arg}."
+    elif action == "click":
+        app, fx, fy = arg
+        r = _run(["osascript", "-e", _CLICK_SCRIPT.format(app=app, fx=fx, fy=fy)])
+        spoken = "Clicked."
     elif action == "run_shortcut":
         r = _run(["shortcuts", "run", arg], timeout=60)
         spoken = f"Ran the {arg} shortcut."
@@ -393,7 +432,7 @@ mac_control_desc = {
         "name": "mac_control",
         "description": (
             "Control the user's Mac. Actions: set_volume (arg 0-100), mute, play_pause, lock_screen, "
-            "open_app (arg app name), run_shortcut (arg shortcut name). Only allowlisted apps and shortcuts "
+            "open_app (arg app name), run_shortcut (arg shortcut name), click (arg: app name then button name, e.g. VIDAA netflix; presses a named button in an allowlisted app window). Only allowlisted apps and shortcuts "
             "work. lock_screen and run_shortcut ask for spoken confirmation first."
         ),
         "parameters": {
