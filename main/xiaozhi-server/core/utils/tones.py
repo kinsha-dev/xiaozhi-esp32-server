@@ -243,6 +243,9 @@ async def play_tone(conn, kind: str, *, close_turn: bool = False) -> None:
     """
     if getattr(conn, "client_abort", False):
         return
+    if getattr(conn, "tts", None) is None:
+        # TTS is still initializing (lazy init); sendAudioMessage needs conn.tts.
+        return
     if kind != "thinking":
         await stop_turn_feedback(conn)
         if getattr(conn, "client_abort", False):
