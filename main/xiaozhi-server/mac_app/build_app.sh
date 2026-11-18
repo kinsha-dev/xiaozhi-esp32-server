@@ -51,5 +51,7 @@ mkdir -p "$(dirname "$DEST")"
 if [ -e "$DEST" ]; then rm -rf "$DEST.old"; mv "$DEST" "$DEST.old"; fi
 mv "$APP" "$DEST"
 rm -rf "$DEST.old"
+# Custom icon, set after signing (codesign rejects a bundle that already carries the icon file).
+"$DIR/scripts/set_vibi_icon.sh" "$DEST"
 echo "Built $DEST (id $ID, runs $DIR with $PY)"
 echo "Restart: kill the running mac_app python pid, then: launchctl kickstart -k gui/$(id -u)/com.voicebox.macapp"
