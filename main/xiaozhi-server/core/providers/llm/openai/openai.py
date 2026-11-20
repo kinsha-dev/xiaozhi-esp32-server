@@ -1,4 +1,5 @@
 import httpx
+import re
 import openai
 from openai.types import CompletionUsage
 from config.logger import setup_logging
@@ -28,11 +29,45 @@ THINKING_DISABLED_MODEL_EXCLUSIONS = {
 }
 
 
+class _ReasoningStrip:
+    """Drops reasoning that some models write into the reply text ("The user is asking me to ... I should ...") so it is
+    never spoken. Buffers the start of a reply until the first sentence is complete; later text passes straight through."""
+    META = re.compile(r"^\s*(okay,?\s+)?(the user('s| is| wants| asked| said| has)|i (should|need to|will|'ll|must|'m going to)|"
+                      r"let me (think|figure|check|see|consider|use)|hmm|first,? i|so,? the user|looking at)\b", re.I)
+
+    def __init__(self):
+        self.buf, self.done = "", False
+
+    def feed(self, text):
+        if self.done or not text:
+            return text
+        self.buf += text
+        out = ""
+        while True:
+            m = re.search(r"[.!?。！？]\s", self.buf)
+            if not m:
+                if len(self.buf) > 400:  # no sentence end in sight: not reasoning prose we can cut safely
+                    out, self.buf, self.done = out + self.buf, "", True
+                return out
+            sent, self.buf = self.buf[:m.end()], self.buf[m.end():]
+            if self.META.match(sent):
+                continue  # reasoning sentence: drop
+            self.done = True
+            out, self.buf = out + sent + self.buf, ""
+            return out
+
+    def flush(self):
+        rest, self.buf, self.done = self.buf, "", True
+        return "" if self.META.match(rest or "") else rest
+
+
 class LLMProvider(LLMProviderBase):
     def __init__(self, config):
         self.model_name = config.get("model_name")
         # 可选实例级思考强度: off/disabled/none/disable | low/medium/high | 空/其他=按域名默认
         self.thinking_mode = str(config.get("thinking") or "").strip().lower()
+        # strip_reasoning (default on): never speak reasoning a model writes into its reply; set false to turn it off
+        self.strip_reasoning = str(config.get("strip_reasoning", True)).strip().lower() not in ("false", "0", "off", "no")
         self.api_key = config.get("api_key")
         if "base_url" in config:
             self.base_url = config.get("base_url")
@@ -193,11 +228,14 @@ class LLMProvider(LLMProviderBase):
         stream = self.client.chat.completions.create(**request_params)
 
         try:
+            strip = _ReasoningStrip() if self.strip_reasoning else None
             for chunk in stream:
                 if getattr(chunk, "choices", None):
                     delta = chunk.choices[0].delta
                     content = getattr(delta, "content", "")
                     tool_calls = getattr(delta, "tool_calls", None)
+                    if strip is not None and content:
+                        content = strip.feed(content)
                     yield content, tool_calls
                 elif isinstance(getattr(chunk, "usage", None), CompletionUsage):
                     usage_info = getattr(chunk, "usage", None)
@@ -206,5 +244,9 @@ class LLMProvider(LLMProviderBase):
                         f"输出 {getattr(usage_info, 'completion_tokens', '未知')}，"
                         f"共计 {getattr(usage_info, 'total_tokens', '未知')}"
                     )
+            if strip is not None:
+                tail = strip.flush()
+                if tail:
+                    yield tail, None
         finally:
             stream.close()
