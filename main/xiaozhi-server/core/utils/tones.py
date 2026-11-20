@@ -241,6 +241,11 @@ async def play_tone(conn, kind: str, *, close_turn: bool = False) -> None:
     Anything except a thinking cycle stops the thinking loop first, so the modem sound
     cannot overlap a closing tone or an action chirp. The loop's own cycles do not.
     """
+    if getattr(conn, "_feedback_turn_open", False):
+        return
+    conn._feedback_sentence_ready = False
+    if not (_enabled(conn, WAKE_ACK_FLAG) or _enabled(conn, THINKING_FLAG)):
+        return
     if getattr(conn, "client_abort", False):
         return
     if getattr(conn, "tts", None) is None:

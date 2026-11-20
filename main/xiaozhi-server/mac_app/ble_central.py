@@ -75,7 +75,7 @@ class BleService:
         try:
             asyncio.run(run_until_stopped(self.cfg, self._stop))
         except Exception as exc:
-            print(f"[ble] stopped: {exc}", flush=True)
+            print(f"[ble] stopped: {type(exc).__name__}: {exc}", flush=True)
 
 
 async def run_until_stopped(cfg, stop: threading.Event):
