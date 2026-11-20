@@ -1,11 +1,12 @@
-"""Floating wave overlay (AppKit): shown while vibi is responding, driven by the speaker's output level."""
+"""Floating avatar overlay (AppKit): a light, flat face that listens, thinks and talks (mouth follows the speaker's output
+level, eyes blink), with live captions under it. Shown while vibi is active."""
 import math
 import time
 
 from mac_app import captions
 
-BARS = 28
-W, H = 460, 64
+BARS = 28  # kept for the old name; the level history now only smooths the mouth
+W, H = 460, 120
 LINE_H = 17
 MAX_LINES = 3
 CHARS_PER_LINE = 62  # ~13pt text across the caption width
@@ -22,6 +23,9 @@ class Overlay:
         self._view = None
         self._levels = [0.0] * BARS
         self._shown = False
+        self._mouth = 0.0
+        self._look = (0.0, 0.0)
+        self._blink = False
         self._label = None
         self._cap = False
         self._cap_key = None
@@ -39,14 +43,23 @@ class Overlay:
                 b = self.bounds()
                 AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.08, 0.82).set()
                 AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, 18, 18).fill()
-                gap = 4.0
-                bw = (b.size.width - 32 - gap * (BARS - 1)) / BARS
-                mid = b.size.height - H / 2  # bars sit in the top strip; the caption goes below
-                AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*outer._color, 1.0).set()
-                for i, lv in enumerate(levels):
-                    h = 4 + lv * (b.size.height - 16)
-                    r = NSMakeRect(16 + i * (bw + gap), mid - h / 2, bw, h)
-                    AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(r, bw / 2, bw / 2).fill()
+                cx, cy, r = b.size.width / 2, b.size.height - H / 2, 40.0  # face sits in the top strip
+                R, G, B = outer._color
+                AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(R, G, B, 0.22).set()
+                AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8)).fill()
+                AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(R, G, B, 1.0).set()
+                AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx - r, cy - r, 2 * r, 2 * r)).fill()
+                dark = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.1, 1.0)
+                dark.set()
+                ex, ey = outer._look
+                eh = 3.0 if outer._blink else 11.0  # blink = squashed eyes
+                for sx in (-15, 15):
+                    AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx + sx - 5 + ex, cy + 8 + ey - eh / 2, 10, eh)).fill()
+                m = outer._mouth  # 0 closed .. 1 wide open
+                mw, mh = 22 + 8 * m, 3 + 17 * m
+                path = AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+                    NSMakeRect(cx - mw / 2, cy - 22 - mh / 2, mw, mh), min(mh / 2, 9), min(mh / 2, 9))
+                path.fill()
 
         scr = AppKit.NSScreen.mainScreen().frame()
         rect = NSMakeRect(scr.origin.x + (scr.size.width - W) / 2, scr.origin.y + 90, W, H)
@@ -87,26 +100,25 @@ class Overlay:
         elif not want and self._shown:
             self._panel.orderOut_(None)
             self._shown = False
-            self._levels[:] = [0.0] * BARS
+            self._mouth = 0.0
             return
         if not self._shown:
             return
         t = time.monotonic()
-        # speaking: blue ripple driven by output level; listening: green bars rising from the centre with the
-        # live mic level (reacts to your voice); connecting/thinking: dim amber pulse.
+        # speaking: blue face, jaw follows the output level; listening: green, mouth reacts to your voice, eyes wide;
+        # connecting/thinking: amber, eyes glance up and to the side, mouth small.
         self._color = {"speaking": (0.35, 0.8, 1.0), "listening": (0.3, 0.9, 0.45)}.get(state, (1.0, 0.75, 0.3))
         sp = self._level_fn() if state == "speaking" else 0.0
         mic = min(1.0, self._mic_fn() * 12) if state == "listening" else 0.0
-        for i in range(BARS):
-            ripple = 0.5 + 0.5 * math.sin(t * 9 + i * 0.7)
-            if state == "speaking":
-                target = min(1.0, sp * 4) * (0.35 + 0.65 * ripple)
-            elif state == "listening":
-                edge = 1.0 - abs(i - (BARS - 1) / 2) / (BARS / 2)  # tallest in the middle
-                target = 0.06 + mic * (0.3 + 0.7 * edge) * (0.6 + 0.4 * ripple)
-            else:
-                target = 0.08 + 0.07 * ripple
-            self._levels[i] += (target - self._levels[i]) * 0.5
+        if state == "speaking":
+            target = min(1.0, sp * 4) * (0.4 + 0.6 * abs(math.sin(t * 11)))
+        elif state == "listening":
+            target = 0.06 + mic * 0.6
+        else:
+            target = 0.12
+        self._mouth += (target - self._mouth) * 0.5
+        self._blink = (t % 3.6) < 0.12
+        self._look = (4.0, 4.0) if state in ("thinking", "connecting") else (0.0, 0.0)
         self._caption()
         self._view.setNeedsDisplay_(True)
 
