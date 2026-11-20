@@ -72,6 +72,11 @@ def main():
     ensure_bluetooth_usage()
     ble = BleService(ctl.cfg)
     ble.start()
+    from mac_app.collector import BoardService, CollectorService
+    collector = CollectorService()
+    collector.start()
+    board = BoardService()
+    board.start()
     from mac_app.ctrl import CtrlPanel, register_hotkeys
     from mac_app.ctrl_tunnel import Tunnel
 
@@ -191,6 +196,8 @@ def main():
 
         def on_quit(self, _):
             ble.stop()
+            collector.stop()
+            board.stop()
             ctl.stop()
             rumps.quit_application()
 
