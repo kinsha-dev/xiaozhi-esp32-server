@@ -1143,13 +1143,17 @@ class ConnectionHandler:
                 self._session_logged = True
                 try:
                     from plugins_func.functions import history_log as _hl
-                    names = [f.get("function", {}).get("name", "") for f in (functions or [])]
-                    llm = (self.config.get("selected_module") or {}).get("LLM", "")
-                    model = ((self.config.get("LLM") or {}).get(llm) or {}).get("model_name", llm)
+                    pm = self.prompt_manager
+                    today, weekday, _lunar = pm._get_current_time_info()
+                    ip = getattr(self, "client_ip", None)
+                    place = (pm.cache_manager.get(pm.CacheType.LOCATION, ip) or "") if ip else ""
+                    weather = (pm.cache_manager.get(pm.CacheType.WEATHER, place) or "") if place else ""
+                    tts = (self.config.get("selected_module") or {}).get("TTS", "")
+                    lang = ((self.config.get("TTS") or {}).get(tts) or {}).get("language") or ""
                     _hl.record_async("action", "new_session", said=query if isinstance(query, str) else "",
-                                     args={"id": self.session_id[:8], "model": model, "tools": len(names),
-                                           "memory": bool(self.config.get("summaryMemory")),
-                                           "prompt_chars": len(self.prompt or ""), "tool_names": ",".join(names[:12])},
+                                     args={"language": lang, "today_date": today, "today_weekday": weekday,
+                                           "local_address": place, "weather_info": weather,
+                                           "device_id": getattr(self, "device_id", ""), "client_ip": ip or ""},
                                      status="started", source="llm")
                 except Exception:
                     pass
