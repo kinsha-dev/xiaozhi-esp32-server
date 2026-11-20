@@ -89,7 +89,7 @@ async def run_until_stopped(cfg, stop: threading.Event):
         try:
             device = await BleakScanner.find_device_by_filter(_is_board, timeout=2.0)
         except Exception as exc:
-            print(f"[ble] scan failed: {exc}", flush=True)
+            print(f"[ble] scan failed: {type(exc).__name__}: {exc}", flush=True)
             await asyncio.sleep(5)
             continue
         if device is None or stop.is_set():
@@ -97,7 +97,7 @@ async def run_until_stopped(cfg, stop: threading.Event):
         try:
             await _session(BleakClient, device, cfg, token, stop)
         except Exception as exc:
-            print(f"[ble] session ended: {exc}", flush=True)
+            print(f"[ble] session ended: {type(exc).__name__}: {exc}", flush=True)
         await asyncio.sleep(1)
 
 

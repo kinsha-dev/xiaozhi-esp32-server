@@ -114,6 +114,11 @@ async def startToChat(conn: "ConnectionHandler", text):
             return
         conn._followup_until = time.time() + (name_filter.FOLLOWUP_S if audio_device.is_board(conn) else MAC_FOLLOWUP_S)
         passed_name_filter = True
+        from core.utils import utterance_dedupe
+
+        if utterance_dedupe.is_duplicate(heard, id(conn)):
+            conn.logger.bind(tag=TAG).info(f"Dropped duplicate (the other device already answered): {str(heard)[:80]}")
+            return
 
     if conn.need_bind:
         await check_bind_device(conn)

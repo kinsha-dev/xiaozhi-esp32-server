@@ -11,11 +11,13 @@ from core.confirmation_window import _file as _awaiting_file
 
 FOLLOWUP_S = 25  # after an accepted turn: long enough to hear the answer and reply
 # The ways "vibi" is really heard; ordinary words ("baby", "vibe") are left out on purpose.
-_NAME = re.compile(r"\b(vibi|vibie|vibey|vibby|vivi|vivie|bibi|bibie|bibbi|bibby|vb|v\.? ?b\.?|vee ?bee|vee ?vee|bee ?bee)\b", re.I)
+_NAME = re.compile(r"\b(vibi|vibie|vibey|vibby|vivi|vivie|bibi|bibie|bibbi|bibby|vb|v\.? ?b\.?|vee ?bee|vee ?vee|bee ?bee|vibhi|vi ?bi|vybe|vibee|bb|pb|pbi|bbi|b\.? ?b\.?)\b", re.I)
+# Whisper often hears "Hi Vibi" as "Hi, we ..." at the start of a sentence; a leading greeting plus "we" counts as the name.
+_GREETING_WE = re.compile(r"^\W*(hi|hey|hello|okay|ok),?\s+we\b", re.I)
 
 
 def says_name(text: str) -> bool:
-    return bool(_NAME.search(text or ""))
+    return bool(_NAME.search(text or "") or _GREETING_WE.search(text or ""))
 
 
 def _awaiting(now: float) -> bool:
