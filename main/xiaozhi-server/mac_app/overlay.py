@@ -7,7 +7,7 @@ from mac_app import captions
 BARS = 28
 W, H = 460, 64
 LINE_H = 17
-MAX_LINES = 9
+MAX_LINES = 3
 CHARS_PER_LINE = 62  # ~13pt text across the caption width
 
 

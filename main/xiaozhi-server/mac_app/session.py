@@ -110,6 +110,7 @@ class Session:
                 if self._state != "speaking":
                     self._set("speaking")
             elif ev.kind == "tts" and ev.state == "stop":
+                captions.finish()
                 while hasattr(self._speaker, "speak") and self._speaker.is_busy():
                     await asyncio.sleep(0.1)  # let `say` finish before we listen
                 self._mute_until = time.monotonic() + self._tail
