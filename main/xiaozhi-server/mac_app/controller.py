@@ -362,13 +362,21 @@ class Controller:
         self.start_session("hi bibi", auto=True)
 
     def start_session(self, text: str, auto: bool = False, force: bool = False) -> bool:
+        if force and self._active and not self.muted:  # Vibi Ctrl rerun while a session sits open: end it, then replay
+            fut = getattr(self, "_sess_future", None)
+            if fut is not None:
+                fut.cancel()
+                for _ in range(30):
+                    if not self._active:
+                        break
+                    time.sleep(0.1)
         with self._lock:
             if self._active or self.muted or (self.defer_to_board() and not force):  # force: Vibi Ctrl rerun
                 return False
             tones.stop()  # a confused or pending chirp must not keep playing over the reply
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
-        asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto), self._loop)
+        self._sess_future = asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto), self._loop)
         return True
 
     async def _run_session(self, text, q, auto=False):
