@@ -2,8 +2,11 @@
 import math
 import time
 
+from mac_app import captions
+
 BARS = 28
-W, H = 260, 64
+W, H = 380, 64
+CAP_H = 48  # extra height while a caption shows
 
 
 class Overlay:
@@ -17,6 +20,9 @@ class Overlay:
         self._view = None
         self._levels = [0.0] * BARS
         self._shown = False
+        self._label = None
+        self._cap = False
+        self._cap_key = None
 
     def _build(self):
         import AppKit
@@ -33,7 +39,7 @@ class Overlay:
                 AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, 18, 18).fill()
                 gap = 4.0
                 bw = (b.size.width - 32 - gap * (BARS - 1)) / BARS
-                mid = b.size.height / 2
+                mid = b.size.height - H / 2  # bars sit in the top strip; the caption goes below
                 AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*outer._color, 1.0).set()
                 for i, lv in enumerate(levels):
                     h = 4 + lv * (b.size.height - 16)
@@ -54,7 +60,18 @@ class Overlay:
                                  | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary)
         view = WaveView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
         p.setContentView_(view)
-        self._panel, self._view = p, view
+        label = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(16, 8, W - 32, CAP_H - 12))
+        label.setBezeled_(False)
+        label.setDrawsBackground_(False)
+        label.setEditable_(False)
+        label.setSelectable_(False)
+        label.setAlignment_(AppKit.NSTextAlignmentCenter)
+        label.setFont_(AppKit.NSFont.systemFontOfSize_(13))
+        label.setLineBreakMode_(AppKit.NSLineBreakByTruncatingHead)
+        label.setMaximumNumberOfLines_(2)
+        label.setHidden_(True)
+        view.addSubview_(label)
+        self._panel, self._view, self._label = p, view, label
 
     def update(self, state: str, muted: bool = False):
         """state: controller state. Visible for every non-idle state; bars follow output level when speaking."""
@@ -87,4 +104,25 @@ class Overlay:
             else:
                 target = 0.08 + 0.07 * ripple
             self._levels[i] += (target - self._levels[i]) * 0.5
+        self._caption()
         self._view.setNeedsDisplay_(True)
+
+    def _caption(self):
+        """Show the latest line (yours dim, vibi's light blue) under the bars; grow the panel only while it shows."""
+        import AppKit
+        from Foundation import NSMakeRect
+        role, text = captions.current()
+        want = bool(text)
+        if want != self._cap:
+            f = self._panel.frame()
+            h = H + (CAP_H if want else 0)
+            self._panel.setFrame_display_(NSMakeRect(f.origin.x, f.origin.y, W, h), True)
+            self._view.setFrame_(NSMakeRect(0, 0, W, h))
+            self._label.setHidden_(not want)
+            self._cap = want
+        if want and (role, text) != self._cap_key:
+            self._cap_key = (role, text)
+            self._label.setStringValue_(text)
+            col = (AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.7, 0.9, 1.0, 1.0) if role == "vibi"
+                   else AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.75, 1.0))
+            self._label.setTextColor_(col)
