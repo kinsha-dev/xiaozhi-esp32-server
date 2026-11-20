@@ -1,0 +1,1 @@
+/Users/kinsha/esp/voice-note-box/server/plugin/ticker_news.py
