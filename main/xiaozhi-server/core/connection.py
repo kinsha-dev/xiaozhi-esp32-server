@@ -1139,13 +1139,20 @@ class ConnectionHandler:
                 self.system_introduced_speakers.add(cs)
                 speaker_for_system = cs
 
-            try:  # log the prompt call for Vibi Ctrl (queued; never blocks the turn)
-                from plugins_func.functions import history_log as _hl
-                _hl.record_async("action", "llm_prompt", said=query if isinstance(query, str) else "",
-                                 args={"tools": len(functions) if functions else 0, "depth": depth}, status="sent",
-                                 source="llm")
-            except Exception:
-                pass
+            if not getattr(self, "_session_logged", False):  # one Vibi Ctrl row per session: what feeds the prompt, not the prompt
+                self._session_logged = True
+                try:
+                    from plugins_func.functions import history_log as _hl
+                    names = [f.get("function", {}).get("name", "") for f in (functions or [])]
+                    llm = (self.config.get("selected_module") or {}).get("LLM", "")
+                    model = ((self.config.get("LLM") or {}).get(llm) or {}).get("model_name", llm)
+                    _hl.record_async("action", "new_session", said=query if isinstance(query, str) else "",
+                                     args={"id": self.session_id[:8], "model": model, "tools": len(names),
+                                           "memory": bool(self.config.get("summaryMemory")),
+                                           "prompt_chars": len(self.prompt or ""), "tool_names": ",".join(names[:12])},
+                                     status="started", source="llm")
+                except Exception:
+                    pass
             if self.intent_type == "function_call" and functions is not None:
                 # 使用支持functions的streaming接口
                 llm_responses = self.llm.response_with_functions(
