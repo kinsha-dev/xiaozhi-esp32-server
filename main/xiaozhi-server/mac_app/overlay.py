@@ -5,8 +5,10 @@ import time
 from mac_app import captions
 
 BARS = 28
-W, H = 380, 64
-CAP_H = 48  # extra height while a caption shows
+W, H = 460, 64
+LINE_H = 17
+MAX_LINES = 9
+CHARS_PER_LINE = 62  # ~13pt text across the caption width
 
 
 class Overlay:
@@ -60,15 +62,16 @@ class Overlay:
                                  | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary)
         view = WaveView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
         p.setContentView_(view)
-        label = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(16, 8, W - 32, CAP_H - 12))
+        label = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(16, 8, W - 32, LINE_H * MAX_LINES))
         label.setBezeled_(False)
         label.setDrawsBackground_(False)
         label.setEditable_(False)
         label.setSelectable_(False)
         label.setAlignment_(AppKit.NSTextAlignmentCenter)
         label.setFont_(AppKit.NSFont.systemFontOfSize_(13))
-        label.setLineBreakMode_(AppKit.NSLineBreakByTruncatingHead)
-        label.setMaximumNumberOfLines_(2)
+        label.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
+        label.setMaximumNumberOfLines_(MAX_LINES)
+        label.cell().setWraps_(True)
         label.setHidden_(True)
         view.addSubview_(label)
         self._panel, self._view, self._label = p, view, label
@@ -113,13 +116,17 @@ class Overlay:
         from Foundation import NSMakeRect
         role, text = captions.current()
         want = bool(text)
-        if want != self._cap:
+        lines = min(MAX_LINES, max(1, -(-len(text) // CHARS_PER_LINE))) if want else 0
+        if text and len(text) > MAX_LINES * CHARS_PER_LINE:  # more than fits: keep the newest part
+            text = "…" + text[-(MAX_LINES * CHARS_PER_LINE - 1):]
+        if (want, lines) != (self._cap, getattr(self, "_lines", 0)):
             f = self._panel.frame()
-            h = H + (CAP_H if want else 0)
+            h = H + (LINE_H * lines + 14 if want else 0)
             self._panel.setFrame_display_(NSMakeRect(f.origin.x, f.origin.y, W, h), True)
             self._view.setFrame_(NSMakeRect(0, 0, W, h))
+            self._label.setFrame_(NSMakeRect(16, 8, W - 32, LINE_H * lines + 2))
             self._label.setHidden_(not want)
-            self._cap = want
+            self._cap, self._lines = want, lines
         if want and (role, text) != self._cap_key:
             self._cap_key = (role, text)
             self._label.setStringValue_(text)

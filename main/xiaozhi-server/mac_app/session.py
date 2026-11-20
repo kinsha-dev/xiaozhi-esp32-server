@@ -101,8 +101,10 @@ class Session:
             if ev.kind == "stt" and self._state == "listening":
                 self._set("thinking")
             elif ev.kind == "tts" and ev.state in ("start", "sentence_start"):
+                if ev.state == "start":
+                    captions.reset()  # a new reply: start its caption fresh
                 if ev.state == "sentence_start":
-                    captions.set("vibi", ev.text)
+                    captions.set("vibi", ev.text, append=True)
                 if ev.state == "sentence_start" and hasattr(self._speaker, "speak"):
                     self._speaker.speak(ev.text)
                 if self._state != "speaking":
