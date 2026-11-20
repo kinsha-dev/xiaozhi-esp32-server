@@ -1,5 +1,6 @@
 """统一工具管理器"""
 
+import time
 from typing import Dict, List, Optional, Any
 from config.logger import setup_logging
 from plugins_func.register import Action, ActionResponse
@@ -93,24 +94,25 @@ class ToolManager:
 
             # 执行工具
             self.logger.info(f"执行工具: {tool_name}，参数: {arguments}")
+            _t0 = time.monotonic()
             result = await executor.execute(self.conn, tool_name, arguments)
             self.logger.debug(f"工具执行结果: {result}")
-            self._record_history(tool_name, arguments, result)
+            self._record_history(tool_name, arguments, result, time.monotonic() - _t0)
             return result
 
         except Exception as e:
             self.logger.error(f"执行工具 {tool_name} 时出错: {e}")
             return ActionResponse(action=Action.ERROR, response=str(e))
 
-    def _record_history(self, tool_name, arguments, result):
+    def _record_history(self, tool_name, arguments, result, duration=None):
         """Append the call to data/history.jsonl for the Vibi Ctrl panel (never raises)."""
         try:
             from plugins_func.functions import history_log as hl
             act = getattr(getattr(result, "action", None), "name", "")
             bad = act in ("ERROR", "NOTFOUND")
             text = getattr(result, "response", None) or getattr(result, "result", None) or ""
-            hl.record("action", tool_name, said=hl.last_user_text(self.conn), args=arguments,
-                      status="error" if bad else "ok", result=text)
+            hl.record_async("action", tool_name, said=hl.last_user_text(self.conn), args=arguments,
+                            status="error" if bad else "ok", result=text, duration=duration)
         except Exception:
             pass
 
