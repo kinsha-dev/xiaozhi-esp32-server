@@ -1139,15 +1139,15 @@ class ConnectionHandler:
                 self.system_introduced_speakers.add(cs)
                 speaker_for_system = cs
 
-            if not getattr(self, "_session_logged", False):  # one Vibi Ctrl row per session: what feeds the prompt, not the prompt
-                self._session_logged = True
-                try:
-                    from plugins_func.functions import history_log as _hl
-                    _hl.record_async("action", "new_session", said=query if isinstance(query, str) else "",
-                                     args={"prompt_chars": len(self.prompt or "")}, status="started", source="llm",
-                                     text=self.prompt)
-                except Exception:
-                    pass
+            try:  # Vibi Ctrl: log only what is sent to the LLM (the command, or the tool result on a follow-up call)
+                from plugins_func.functions import history_log as _hl
+                sent = query if isinstance(query, str) and query else ""
+                if not sent:
+                    last = self.dialogue.dialogue[-1] if self.dialogue.dialogue else None
+                    sent = str(getattr(last, "content", "") or "")
+                _hl.record_async("action", "llm_input", said=sent, status="sent", source="llm", text=sent)
+            except Exception:
+                pass
             if self.intent_type == "function_call" and functions is not None:
                 # 使用支持functions的streaming接口
                 llm_responses = self.llm.response_with_functions(
