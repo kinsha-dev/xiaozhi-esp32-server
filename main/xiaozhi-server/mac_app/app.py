@@ -195,6 +195,8 @@ def main():
             rumps.quit_application()
 
     ctl.start()
+    from mac_app import cu_agent
+    cu_agent.start(ctl.cfg.data_dir)
     armed = register_hotkeys(panel.open)
     print(f"[ctrl] hotkeys: {armed}", flush=True)
     try:  # the log can be hard to find: leave the result where the panel/support can read it
