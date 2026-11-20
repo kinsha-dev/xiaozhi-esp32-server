@@ -109,7 +109,7 @@ def history(data_dir: Path, kind: str, limit: int = 100) -> list:
             if a.get("kind") == "action":
                 said = a.get("said") or ""
                 rows.append(_row(a["id"], a.get("ts"), a.get("name", ""), a.get("status", "ok"),
-                                 " | ".join(x for x in (a.get("args"), a.get("result")) if x), bool(a.get("risky")),
+                                 " | ".join(x for x in (a.get("args"), a.get("result"), a.get("text")) if x), bool(a.get("risky")),
                                  said or None, a.get("source", "")))
     elif kind == "commands":
         for c in _jsonl(d / "history.jsonl"):

@@ -1144,7 +1144,8 @@ class ConnectionHandler:
                 try:
                     from plugins_func.functions import history_log as _hl
                     _hl.record_async("action", "new_session", said=query if isinstance(query, str) else "",
-                                     args={"prompt_chars": len(self.prompt or "")}, status="started", source="llm")
+                                     args={"prompt_chars": len(self.prompt or "")}, status="started", source="llm",
+                                     text=self.prompt)
                 except Exception:
                     pass
             if self.intent_type == "function_call" and functions is not None:
