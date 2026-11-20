@@ -1139,15 +1139,18 @@ class ConnectionHandler:
                 self.system_introduced_speakers.add(cs)
                 speaker_for_system = cs
 
-            try:  # Vibi Ctrl: log only what is sent to the LLM (the command, or the tool result on a follow-up call)
-                from plugins_func.functions import history_log as _hl
-                sent = query if isinstance(query, str) and query else ""
-                if not sent:
-                    last = self.dialogue.dialogue[-1] if self.dialogue.dialogue else None
-                    sent = str(getattr(last, "content", "") or "")
-                _hl.record_async("action", "llm_input", said=sent, status="sent", source="llm", text=sent)
-            except Exception:
-                pass
+            if isinstance(query, str) and query:  # Vibi Ctrl: the command sent to the LLM; tool follow-ups are not logged
+                try:
+                    from plugins_func.functions import history_log as _hl
+                    sent = query
+                    if not getattr(self, "_prev_logged", False):  # first command of a wake-up: add last wake-up's summary
+                        self._prev_logged = True
+                        prev = _hl.previous_wakeup_summary()
+                        if prev:
+                            sent = f"{query}\n\nPrevious wake-up: {prev}"
+                    _hl.record_async("action", "llm_input", said=query, status="sent", source="llm", text=sent)
+                except Exception:
+                    pass
             if self.intent_type == "function_call" and functions is not None:
                 # 使用支持functions的streaming接口
                 llm_responses = self.llm.response_with_functions(
