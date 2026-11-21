@@ -10,50 +10,50 @@ logger = setup_logging()
 
 punctuation_set = {
     "，",
-    ",",  # 中文逗号 + 英文逗号
+    ",",  # Chinese comma + English comma
     "。",
-    ".",  # 中文句号 + 英文句号
+    ".",  # Chinese full stop + English full stop
     "！",
-    "!",  # 中文感叹号 + 英文感叹号
+    "!",  # Chinese exclamation mark + English exclamation mark
     "“",
     "”",
-    '"',  # 中文双引号 + 英文引号
+    '"',  # Chinese double quote + English quote
     "：",
-    ":",  # 中文冒号 + 英文冒号
+    ":",  # Chinese colon + English colon
     "-",
-    "－",  # 英文连字符 + 中文全角横线
-    "、",  # 中文顿号
+    "－",  # English hyphen + Chinese full-width dash
+    "、",  # Chinese enumeration comma
     "[",
-    "]",  # 方括号
+    "]",  # square bracket
     "【",
-    "】",  # 中文方括号
-    "~",  # 波浪号
+    "】",  # Chinese square bracket
+    "~",  # tilde
 }
 
 def create_instance(class_name, *args, **kwargs):
-    # 创建TTS实例
+    # create the TTS instance
     if os.path.exists(os.path.join('core', 'providers', 'tts', f'{class_name}.py')):
         lib_name = f'core.providers.tts.{class_name}'
         if lib_name not in sys.modules:
             sys.modules[lib_name] = importlib.import_module(f'{lib_name}')
         return sys.modules[lib_name].TTSProvider(*args, **kwargs)
 
-    raise ValueError(f"不支持的TTS类型: {class_name}，请检查该配置的type是否设置正确")
+    raise ValueError(f"Unsupported TTS type: {class_name}, please check that the type of this configuration is set correctly")
 
 
 class MarkdownCleaner:
     """
-    封装 Markdown 清理逻辑：直接用 MarkdownCleaner.clean_markdown(text) 即可
+    Wraps the Markdown cleanup logic: just use MarkdownCleaner.clean_markdown(text)
     """
-    # 公式字符
+    # formula characters
     NORMAL_FORMULA_CHARS = re.compile(r'[a-zA-Z\\^_{}\+\-\(\)\[\]=]')
 
     @staticmethod
     def _replace_inline_dollar(m: re.Match) -> str:
         """
-        只要捕获到完整的 "$...$":
-          - 如果内部有典型公式字符 => 去掉两侧 $
-          - 否则 (纯数字/货币等) => 保留 "$...$"
+        As soon as a complete "$...$" is captured:
+          - if it contains typical formula characters => strip the $ on both sides
+          - otherwise (plain numbers/currency etc.) => keep "$...$"
         """
         content = m.group(1)
         if MarkdownCleaner.NORMAL_FORMULA_CHARS.search(content):
@@ -64,7 +64,7 @@ class MarkdownCleaner:
     @staticmethod
     def _replace_table_block(match: re.Match) -> str:
         """
-        当匹配到一个整段表格块时，回调该函数。
+        When a whole table block is matched, this function is called back.
         """
         block_text = match.group('table_block')
         lines = block_text.strip('\n').split('\n')
@@ -86,11 +86,11 @@ class MarkdownCleaner:
 
         lines_for_tts = []
         if len(parsed_table) == 1:
-            # 只有一行
+            # only one row
             only_line_str = ", ".join(parsed_table[0])
-            lines_for_tts.append(f"单行表格：{only_line_str}")
+            lines_for_tts.append(f"Single-row table: {only_line_str}")
         else:
-            lines_for_tts.append(f"表头是：{', '.join(headers)}")
+            lines_for_tts.append(f"The header is: {', '.join(headers)}")
             for i, row in enumerate(data_rows, start=1):
                 row_str_list = []
                 for col_index, cell_val in enumerate(row):
@@ -98,73 +98,73 @@ class MarkdownCleaner:
                         row_str_list.append(f"{headers[col_index]} = {cell_val}")
                     else:
                         row_str_list.append(cell_val)
-                lines_for_tts.append(f"第 {i} 行：{', '.join(row_str_list)}")
+                lines_for_tts.append(f"Row {i}: {', '.join(row_str_list)}")
 
         return "\n".join(lines_for_tts) + "\n"
 
-    # 预编译所有正则表达式（按执行频率排序）
-    # 这里要把 replace_xxx 的静态方法放在最前定义，以便在列表里能正确引用它们。
+    # precompile all regular expressions (ordered by execution frequency)
+    # the static replace_xxx methods must be defined first so the list can reference them correctly.
     REGEXES = [
-        (re.compile(r'```.*?```', re.DOTALL), ''),  # 代码块
-        (re.compile(r'^#+\s*', re.MULTILINE), ''),  # 标题
-        (re.compile(r'(\*\*|__)(.*?)\1'), r'\2'),  # 粗体
-        (re.compile(r'(\*|_)(?=\S)(.*?)(?<=\S)\1'), r'\2'),  # 斜体
-        (re.compile(r'!\[.*?\]\(.*?\)'), ''),  # 图片
-        (re.compile(r'\[(.*?)\]\(.*?\)'), r'\1'),  # 链接
-        (re.compile(r'^\s*>+\s*', re.MULTILINE), ''),  # 引用
+        (re.compile(r'```.*?```', re.DOTALL), ''),  # code block
+        (re.compile(r'^#+\s*', re.MULTILINE), ''),  # heading
+        (re.compile(r'(\*\*|__)(.*?)\1'), r'\2'),  # bold
+        (re.compile(r'(\*|_)(?=\S)(.*?)(?<=\S)\1'), r'\2'),  # italic
+        (re.compile(r'!\[.*?\]\(.*?\)'), ''),  # image
+        (re.compile(r'\[(.*?)\]\(.*?\)'), r'\1'),  # link
+        (re.compile(r'^\s*>+\s*', re.MULTILINE), ''),  # quote
         (
             re.compile(r'(?P<table_block>(?:^[^\n]*\|[^\n]*\n)+)', re.MULTILINE),
             _replace_table_block
         ),
-        (re.compile(r'^\s*[*+-]\s*', re.MULTILINE), '- '),  # 列表
-        (re.compile(r'\$\$.*?\$\$', re.DOTALL), ''),  # 块级公式
+        (re.compile(r'^\s*[*+-]\s*', re.MULTILINE), '- '),  # list
+        (re.compile(r'\$\$.*?\$\$', re.DOTALL), ''),  # block formula
         (
             re.compile(r'(?<![A-Za-z0-9])\$([^\n$]+)\$(?![A-Za-z0-9])'),
             _replace_inline_dollar
         ),
-        (re.compile(r'\n{2,}'), '\n'),  # 多余空行
+        (re.compile(r'\n{2,}'), '\n'),  # extra blank lines
     ]
 
     @staticmethod
     def clean_markdown(text: str) -> str:
         """
-        主入口方法：依序执行所有正则，移除或替换 Markdown 元素
+        Main entry: run all regular expressions in turn to remove or replace Markdown elements
         """
         for regex, replacement in MarkdownCleaner.REGEXES:
             text = regex.sub(replacement, text)
 
-        # 去除emoji表情
+        # strip emoji
         text = check_emoji(text)
 
-        # 检查文本是否全为英文和基本标点符号
+        # check whether the text is entirely English and basic punctuation
         if text and all((c.isascii() or c.isspace() or c in punctuation_set) for c in text):
-            # 保留原始空格，直接返回
+            # keep the original spaces and return directly
             return text
 
         return text.strip()
 
 def convert_percentage_to_range(percentage, min_val, max_val, base_val=None):
     """
-    将百分比(-100~100)转换为指定范围的值
+    Convert a percentage (-100~100) into a value in the given range
 
     Args:
-        percentage: 百分比值 (-100 到 100)
-        min_val: 目标范围最小值
-        max_val: 目标范围最大值
-        base_val: 基准值（可选，默认为范围中点）
+        percentage: percentage value (-100 to 100)
+        min_val: minimum of the target range
+        max_val: maximum of the target range
+        base_val: base value (optional, defaults to the midpoint of the range)
 
     Returns:
-        转换后的值
+        the converted value
     """
     percentage, min_val, max_val = float(percentage), float(min_val), float(max_val)
     base_val = float(base_val) if base_val is not None else (min_val + max_val) / 2
 
     if percentage < 0:
-        # 负百分比：从 base_val 向 min_val 线性插值
+        # negative percentage: interpolate linearly from base_val towards min_val
         result = base_val + (base_val - min_val) * (percentage / 100)
     else:
-        # 正百分比：从 base_val 向 max_val 线性插值
+        # positive percentage: interpolate linearly from base_val towards max_val
         result = base_val + (max_val - base_val) * (percentage / 100)
 
-    # 确保结果在有效范围内
+        # make sure the result is within the valid range
     return max(min_val, min(max_val, result))

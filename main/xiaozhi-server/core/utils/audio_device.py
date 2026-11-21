@@ -29,9 +29,14 @@ def mode() -> str:
     return m if m in ("auto", "mac", "board") else "auto"
 
 
+def muted() -> bool:
+    """True while the Mac app's Mute is on (data/muted exists): the board neither listens nor answers."""
+    return (_dir() / "muted").exists()
+
+
 def board_muted(conn) -> bool:
-    """True when the user picked "This Mac": the board's audio is dropped."""
-    return is_board(conn) and mode() == "mac"
+    """True when the board's audio must be dropped: Mute is on, or the user picked "This Mac"."""
+    return is_board(conn) and (muted() or mode() == "mac")
 
 
 _last = {}

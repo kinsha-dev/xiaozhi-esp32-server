@@ -36,16 +36,32 @@ class VADProvider(VADProviderBase):
 
         self.frame_window_threshold = 3
 
+        # Adaptive strictness: relaxed in a quiet room, strict when background noise is present.
+        # (threshold, threshold_low, frames-in-window needed, min frame rms over noise floor)
+        self.adaptive = str(config.get("adaptive", "true")).lower() != "false"
+        self.relaxed = (0.35, 0.2, 2, 0.0)
+        self.strict = (0.7, 0.45, 4, 2.5)
+        self.noise_quiet = float(config.get("noise_quiet_rms", 0.005))  # ~ -46 dBFS
+        self.noise_loud = float(config.get("noise_loud_rms", 0.02))  # ~ -34 dBFS
+
     def _init_connection_state(self, conn):
-        """为连接初始化独立的 VAD 状态"""
+        """Initialize an independent VAD state for the connection"""
         if not hasattr(conn, "_vad_state"):
             conn._vad_state = np.zeros((2, 1, 128), dtype=np.float32)
         if not hasattr(conn, "_vad_context"):
             conn._vad_context = np.zeros((1, 64), dtype=np.float32)
 
+    def _strictness(self, conn):
+        """0.0 = quiet room (relaxed), 1.0 = noisy (strict), from the tracked noise floor."""
+        noise = getattr(conn, "_vad_noise", None)
+        if not self.adaptive or noise is None:
+            return 0.0
+        t = (noise - self.noise_quiet) / max(self.noise_loud - self.noise_quiet, 1e-6)
+        return min(1.0, max(0.0, t))
+
     def release_conn_resources(self, conn):
-        """释放连接的 VAD 资源（连接关闭时调用）"""
-        for attr in ("_vad_state", "_vad_context"):
+        """Release the connection's VAD resources (called when the connection closes)"""
+        for attr in ("_vad_state", "_vad_context", "_vad_noise"):
             if hasattr(conn, attr):
                 try:
                     delattr(conn, attr)
@@ -53,14 +69,14 @@ class VADProvider(VADProviderBase):
                     pass
 
     def is_vad(self, conn, pcm_frame):
-        # 手动模式：直接返回True，不进行实时VAD检测，所有音频都缓存
+        # manual mode: return True directly, no real-time VAD detection, all audio is buffered
         if conn.client_listen_mode == "manual":
             return True
 
         try:
             self._init_connection_state(conn)
 
-            # pcm_frame已经是处理后的PCM数据
+            # pcm_frame is already processed PCM data
             conn.client_audio_buffer.extend(pcm_frame)
 
             client_have_voice = False
@@ -85,24 +101,43 @@ class VADProvider(VADProviderBase):
                 conn._vad_context = audio_input[:, -64:]
                 speech_prob = out.item()
 
-                # 双阈值判断
-                if speech_prob >= self.vad_threshold:
+                rms = float(np.sqrt(np.mean(audio_float32 ** 2)))
+                t = self._strictness(conn)
+                lerp = lambda a, b: a + (b - a) * t
+                thr = lerp(self.relaxed[0], self.strict[0])
+                thr_low = lerp(self.relaxed[1], self.strict[1])
+                need = int(round(lerp(self.relaxed[2], self.strict[2])))
+                noise = getattr(conn, "_vad_noise", None)
+
+                # dual-threshold decision
+                if speech_prob >= thr:
                     is_voice = True
-                elif speech_prob <= self.vad_threshold_low:
+                elif speech_prob <= thr_low:
                     is_voice = False
                 else:
                     is_voice = conn.last_is_voice
+                # In noise, a frame must also be clearly louder than the noise floor
+                if is_voice and noise is not None and rms < noise * lerp(self.relaxed[3], self.strict[3]):
+                    is_voice = False
 
-                # 声音没低于最低值则延续前一个状态，判断为有声音
+                # Track the noise floor from confident non-speech frames (slow rise, fast fall)
+                if speech_prob < 0.15:
+                    if noise is None:
+                        conn._vad_noise = rms
+                    else:
+                        a = 0.02 if rms > noise else 0.1
+                        conn._vad_noise = noise + a * (rms - noise)
+
+                # if the sound did not fall below the lower threshold, continue the previous state and treat it as voiced
                 conn.last_is_voice = is_voice
 
-                # 更新滑动窗口
+                # update the sliding window
                 conn.client_voice_window.append(is_voice)
                 client_have_voice = (
-                    conn.client_voice_window.count(True) >= self.frame_window_threshold
+                    conn.client_voice_window.count(True) >= need
                 )
 
-                # 如果之前有声音，但本次没有声音，且与上次有声音的时间差已经超过了静默阈值，则认为已经说完一句话
+                # if there was sound before but not this time, and the time since the last voiced frame exceeds the silence threshold, the sentence is considered finished
                 if conn.client_have_voice and not client_have_voice:
                     stop_duration = time.time() * 1000 - conn.vad_last_voice_time
                     if stop_duration >= self.silence_threshold_ms:

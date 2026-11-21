@@ -32,3 +32,20 @@ def other_audio_playing(own_pids) -> bool:
         elif "Resources:" in line and "audio-out" in line and pid is not None and pid not in own_pids:
             return True
     return False
+
+
+def default_devices() -> tuple:
+    """(default input name, default output name) as macOS reports them now; changes when a headset connects or leaves."""
+    try:
+        out = subprocess.run(["system_profiler", "SPAudioDataType", "-json"], capture_output=True, text=True, timeout=8).stdout
+        groups = json.loads(out).get("SPAudioDataType", [])
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    inp = outp = None
+    for group in groups:
+        for item in group.get("_items", []):
+            if item.get("coreaudio_default_audio_input_device") == "spaudio_yes":
+                inp = item.get("_name")
+            if item.get("coreaudio_default_audio_output_device") == "spaudio_yes":
+                outp = item.get("_name")
+    return (inp, outp)

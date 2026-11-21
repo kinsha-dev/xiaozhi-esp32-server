@@ -61,7 +61,13 @@ web_desc = {
 
 
 @register_function("web", web_desc, ToolType.SYSTEM_CTL)
-def web(conn, mode, query=None, url=None, kind="repos", owner=None, open_top=False):
+def web(conn, mode, query=None, url=None, kind="repos", owner=None, open_top=False, **extra):
+    # The model sometimes names the query argument differently ("question", "search", ...).
+    if not query:
+        for alias in ("question", "search", "text", "goal", "prompt", "address", "q"):
+            if extra.get(alias):
+                query = extra[alias]
+                break
     mode = (mode or "").strip().lower()
     if mode not in MODES:
         return ActionResponse(Action.RESPONSE, "unknown mode", "I can look things up, read a page, open a page, search GitHub or use the browser. Which one?")

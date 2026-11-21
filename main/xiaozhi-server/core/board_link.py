@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import time
+
 from pathlib import Path
 
 from core.utils import audio_device
@@ -36,8 +37,8 @@ def silent() -> bool:
 
 
 def probe_body() -> str:
-    """Body of GET /xiaozhi/link: the link mode, plus the word "silent" while silent mode is on (the board shows it)."""
-    return read_mode() + (" silent" if silent() else "")
+    """Body of GET /xiaozhi/link: the link mode, plus "silent" while silent mode is on and "muted" while Mute is on (the board shows both)."""
+    return read_mode() + (" silent" if silent() else "") + (" muted" if audio_device.muted() else "")
 
 
 def message(mode: str) -> str:

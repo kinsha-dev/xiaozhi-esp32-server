@@ -4,8 +4,8 @@ import pytest
 from core.providers.tts.base import TTSProviderBase
 
 
-# 最小 stub：仅需满足抽象方法实例化要求；object.__new__ 会绕过
-# abstractmethod 检查，若基类新增抽象方法这里不会自动报错，属预期（测试不调用）
+# Minimal stub: it only needs to satisfy the abstract-method instantiation requirement; object.__new__ bypasses
+# the abstractmethod check, so a new abstract method in the base class will not fail here automatically, which is expected (the tests never call it)
 class _TTS(TTSProviderBase):
     async def text_to_speak(self, text, output_file):
         return None
@@ -58,36 +58,36 @@ def test_text_without_quotes_is_split_as_before(step):
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_ascii_quote_at_stream_end_stays_whole(step):
-    # 旧逻辑在 ！ 处切开，把孤立的 " 留给下一段首；现在等待引号闭合，整句一次输出
+    # The old logic cut at ！ and left the orphaned " at the start of the next segment; now it waits for the quote to close and emits the whole sentence at once
     assert _segments('She said, "Hi!"', step) == ['She said, "Hi!"']
 
 
-_LQ, _RQ = "\u00ab", "\u00bb"        # « » 法/俄语书名号式引号
-_GOPEN, _GCLOSE = "\u201e", "\u201c"  # „ “ 德语低引号
+_LQ, _RQ = "\u00ab", "\u00bb"        # French/Russian guillemet-style quotes
+_GOPEN, _GCLOSE = "\u201e", "\u201c"  # German low quotation marks
 
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_guillemets_are_not_split(step):
-    # ！ 位于 «» 内，须等右书名号闭合后在句尾标点处切分
+    # ！ is inside « »; wait for the closing guillemet, then split at the sentence-final punctuation
     text = "Il a dit " + _LQ + "Bonjour ! " + _RQ + " puis est parti."
     assert _segments(text, step) == [text]
 
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_german_low9_quotes_stay_whole(step):
-    # „…“ 的闭合符 “ 是中文引号的开引号：“ 总被 (“”, ””) 对计为 opener，
-    # 故 „…“ 闭合后依然判不平衡，无论后续有无句末标点（实测），
-    # 德语只能整句 stop flush —— 这是字符冲突下的保守预期，非缺陷
+    # The closing mark “ of „…“ is the opening quote of Chinese quotes: “ is always counted as an opener by the (“”, ””) pair,
+    # so after „…“ closes it is still judged unbalanced, whether or not sentence-final punctuation follows (measured),
+    # so German can only flush the whole sentence on stop - a conservative expectation under the character clash, not a defect
     text = "Er sagte " + _GOPEN + "Hallo!" + _GCLOSE + " und ging."
     assert _segments(text, step) == [text]
-    # 闭合 + 中文句号同样整句 flush：正路径因 “ 双重语义不可达
+    # closing + Chinese full stop also flushes the whole sentence: the normal path is unreachable because of the dual meaning of “
     text2 = "Er sagte " + _GOPEN + "Hallo!" + _GCLOSE + "。Dann geht er。"
     assert _segments(text2, step) == [text2]
 
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_unterminated_quote_flushes_on_stop(step):
-    # 单个引号符号（未闭合）不卡死：流式期间等待，stop 时整段 flush
+    # a single quote symbol (unclosed) must not hang: wait during streaming, flush the whole text on stop
     assert _segments('"Hi', step) == ['"Hi']
     assert _segments("「わぁ", step) == ["「わぁ"]
 
@@ -97,8 +97,8 @@ _LB, _RB = "\u3010", "\u3011"  # 【】
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_brackets_with_punct_inside_are_not_split(step):
-    # ！位于【】内不得切开（切开时第一段只到“他说【重要”），
-    # 应等右括号闭合后在句尾标点切分
+    # ！ inside 【】 must not be split (otherwise the first segment would stop at "他说【重要");
+    # wait for the closing bracket, then split at the sentence-final punctuation
     assert _segments("他说" + _LB + "重要！步骤" + _RB + "。然后走了。", step) == [
         "他说" + _LB + "重要！步骤",
         "然后走了",
@@ -106,13 +106,13 @@ def test_brackets_with_punct_inside_are_not_split(step):
 
 
 def test_nested_mixed_quotes_stay_whole():
-    # 嵌套引号逐对独立计数，互不干扰
+    # nested quotes are counted independently pair by pair and do not interfere with each other
     assert _segments("“他说『好』了。”然后离开。", 1) == ["他说『好』了。”然后离开"]
 
 
 def test_apostrophes_do_not_block_splitting():
-    # 单引号有撇号歧义（don't），不得纳入平衡检查导致整句延迟
-    # 注：flush 段（stop 时剩余文本）原样输出，不做 strip
+    # a single quote is ambiguous with an apostrophe (don't) and must not enter the balance check, which would delay the whole sentence
+    # Note: the flush segment (the text remaining on stop) is output as is, without strip
     assert _segments("don't! It's fine.", 1) == ["don't", " It's fine."]
 
 
