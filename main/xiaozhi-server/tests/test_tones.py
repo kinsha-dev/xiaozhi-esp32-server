@@ -609,7 +609,7 @@ async def test_name_filter_pass_opens_feedback_before_the_llm(monkeypatch):
         c.close_after_chat = False
         return c
 
-    await rah.startToChat(conn(), "hivibi")
+    await rah.startToChat(conn(), "hi vibi")
     assert order == ["feedback", "intent"]
 
     order.clear()
