@@ -9,6 +9,7 @@ from websockets.asyncio.client import connect
 
 from mac_app.audio import AudioError, OpusDecoder, OpusEncoder
 from mac_app.protocol import detect_message, hello_message, listen_message, parse_server_message
+from mac_app import captions
 
 HEADERS = {"device-id": "mac-app", "client-id": "mac-app"}
 UP_FRAME_BYTES = 1920  # 60 ms of 16 kHz int16 mono
@@ -66,6 +67,7 @@ class Session:
         self._decoder = OpusDecoder(params.get("sample_rate", 24000), params.get("frame_duration", 60))
         await ws.send(listen_message(sid, "start"))
         await ws.send(detect_message(sid, first_text))
+        captions.set("you", first_text)
         self._set("thinking")
         tasks = [asyncio.create_task(c) for c in (self._receive(ws, sid), self._send_mic(ws), self._watch_idle())]
         try:
@@ -94,14 +96,21 @@ class Session:
             ev = parse_server_message(raw)
             if os.environ.get("MAC_APP_DEBUG") and ev.kind == "tts":
                 print(f"[tts] {ev.state} {ev.text!r} (app state {self._state})", flush=True)
+            if ev.kind == "stt":
+                captions.set("you", ev.text)
             if ev.kind == "stt" and self._state == "listening":
                 self._set("thinking")
             elif ev.kind == "tts" and ev.state in ("start", "sentence_start"):
+                if ev.state == "start":
+                    captions.reset()  # a new reply: start its caption fresh
+                if ev.state == "sentence_start":
+                    captions.set("vibi", ev.text, append=True)
                 if ev.state == "sentence_start" and hasattr(self._speaker, "speak"):
                     self._speaker.speak(ev.text)
                 if self._state != "speaking":
                     self._set("speaking")
             elif ev.kind == "tts" and ev.state == "stop":
+                captions.finish()
                 while hasattr(self._speaker, "speak") and self._speaker.is_busy():
                     await asyncio.sleep(0.1)  # let `say` finish before we listen
                 self._mute_until = time.monotonic() + self._tail

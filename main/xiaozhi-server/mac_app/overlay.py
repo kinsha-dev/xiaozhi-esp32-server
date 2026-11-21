@@ -1,9 +1,15 @@
-"""Floating wave overlay (AppKit): shown while vibi is responding, driven by the speaker's output level."""
+"""Floating avatar overlay (AppKit): a square-jawed cartoon Johnny while it listens or thinks, a girl while it talks (mouth follows the
+speaker's output level, eyes blink), with live captions under it. Shown while vibi is active."""
 import math
 import time
 
-BARS = 28
-W, H = 260, 64
+from mac_app import captions
+
+BARS = 28  # kept for the old name; the level history now only smooths the mouth
+W, H = 460, 120
+LINE_H = 17
+MAX_LINES = 3
+CHARS_PER_LINE = 62  # ~13pt text across the caption width
 
 
 class Overlay:
@@ -17,6 +23,13 @@ class Overlay:
         self._view = None
         self._levels = [0.0] * BARS
         self._shown = False
+        self._mouth = 0.0
+        self._girl = False
+        self._look = (0.0, 0.0)
+        self._blink = False
+        self._label = None
+        self._cap = False
+        self._cap_key = None
 
     def _build(self):
         import AppKit
@@ -31,14 +44,70 @@ class Overlay:
                 b = self.bounds()
                 AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.08, 0.82).set()
                 AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, 18, 18).fill()
-                gap = 4.0
-                bw = (b.size.width - 32 - gap * (BARS - 1)) / BARS
-                mid = b.size.height / 2
-                AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(*outer._color, 1.0).set()
-                for i, lv in enumerate(levels):
-                    h = 4 + lv * (b.size.height - 16)
-                    r = NSMakeRect(16 + i * (bw + gap), mid - h / 2, bw, h)
-                    AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(r, bw / 2, bw / 2).fill()
+                cx, cy, r = b.size.width / 2, b.size.height - H / 2, 40.0  # face sits in the top strip
+                R, G, B = outer._color
+                C = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_
+                oval = lambda x, y, w, h: AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x, y, w, h))
+                rrect = lambda x, y, w, h, rad: AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(x, y, w, h), rad, rad)
+                dark = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.1, 1.0)
+                ex, ey = outer._look
+                m = outer._mouth  # 0 closed .. 1 wide open
+                if outer._girl:  # speaking: a girl with long hair, lashes, cheeks and a smile that opens with the voice
+                    C(R, G, B, 0.22).set()
+                    oval(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 12).fill()
+                    C(0.30, 0.17, 0.10, 1).set()  # hair behind the face
+                    oval(cx - r - 7, cy - r - 4, 2 * r + 14, 2 * r + 12).fill()
+                    rrect(cx - r - 7, cy - r - 18, 17, 2 * r - 6, 8).fill()
+                    rrect(cx + r - 10, cy - r - 18, 17, 2 * r - 6, 8).fill()
+                    C(1.0, 0.85, 0.74, 1).set()  # skin
+                    oval(cx - r + 3, cy - r + 1, 2 * r - 6, 2 * r - 4).fill()
+                    C(0.30, 0.17, 0.10, 1).set()  # fringe
+                    fr = AppKit.NSBezierPath.bezierPath()
+                    fr.moveToPoint_((cx - r + 4, cy + 12))
+                    fr.curveToPoint_controlPoint1_controlPoint2_((cx + r - 4, cy + 12), (cx - 12, cy + r - 2), (cx + 18, cy + 4))
+                    fr.curveToPoint_controlPoint1_controlPoint2_((cx, cy + r + 3), (cx + r, cy + r), (cx + 22, cy + r + 4))
+                    fr.curveToPoint_controlPoint1_controlPoint2_((cx - r + 4, cy + 12), (cx - 24, cy + r + 4), (cx - r, cy + r - 2))
+                    fr.fill()
+                    C(1.0, 0.55, 0.6, 0.45).set()  # cheeks
+                    for sx in (-24, 24):
+                        oval(cx + sx - 7, cy - 9, 14, 9).fill()
+                    dark.set()
+                    eh = 2.0 if outer._blink else 9.0
+                    for sx in (-14, 14):
+                        oval(cx + sx - 4 + ex, cy + 2 + ey - eh / 2, 8, eh).fill()
+                        lash = AppKit.NSBezierPath.bezierPath()  # lashes: a flick at the outer corner
+                        lash.setLineWidth_(1.6)
+                        lash.moveToPoint_((cx + sx + (4 if sx > 0 else -4), cy + 2 + eh / 4))
+                        lash.lineToPoint_((cx + sx + (8 if sx > 0 else -8), cy + 2 + eh / 4 + 1.5))
+                        lash.stroke()
+                    mw, mh = 16 + 8 * m, 3 + 14 * m
+                    C(0.85, 0.25, 0.32, 1).set()
+                    rrect(cx - mw / 2, cy - 20 - mh / 2, mw, mh, min(mh / 2, 8)).fill()
+                else:  # listening / thinking: a square-jawed cartoon "Johnny": big blond quiff, shades, strong chin
+                    C(R, G, B, 0.22).set()
+                    rrect(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 16, 18).fill()
+                    C(0.98, 0.80, 0.30, 1).set()  # blond quiff
+                    rrect(cx - r + 2, cy + r - 14, 2 * r - 4, 26, 12).fill()
+                    oval(cx - r + 8, cy + r - 6, 44, 24).fill()
+                    C(0.93, 0.70, 0.52, 1).set()  # square face
+                    rrect(cx - r + 4, cy - r, 2 * r - 8, 2 * r - 4, 7).fill()
+                    C(0.98, 0.80, 0.30, 1).set()  # sideburns
+                    rrect(cx - r + 4, cy + 2, 6, 18, 2).fill()
+                    rrect(cx + r - 10, cy + 2, 6, 18, 2).fill()
+                    dark.set()  # sunglasses (a blink drops the bridge a little)
+                    sh = 5.0 if outer._blink else 13.0
+                    rrect(cx - 30 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
+                    rrect(cx + 4 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
+                    rrect(cx - 5, cy + 12, 10, 3, 1).fill()
+                    C(1, 1, 1, 0.55).set()
+                    if not outer._blink:
+                        rrect(cx - 26 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
+                        rrect(cx + 8 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
+                    mw, mh = 24 + 10 * m, 4 + 14 * m
+                    C(0.55, 0.15, 0.15, 1).set()
+                    rrect(cx - mw / 2, cy - 18 - mh / 2, mw, mh, 3).fill()
+                    C(0.80, 0.55, 0.38, 1).set()  # chin line
+                    rrect(cx - 14, cy - r + 3, 28, 3, 1).fill()
 
         scr = AppKit.NSScreen.mainScreen().frame()
         rect = NSMakeRect(scr.origin.x + (scr.size.width - W) / 2, scr.origin.y + 90, W, H)
@@ -54,7 +123,19 @@ class Overlay:
                                  | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary)
         view = WaveView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
         p.setContentView_(view)
-        self._panel, self._view = p, view
+        label = AppKit.NSTextField.alloc().initWithFrame_(NSMakeRect(16, 8, W - 32, LINE_H * MAX_LINES))
+        label.setBezeled_(False)
+        label.setDrawsBackground_(False)
+        label.setEditable_(False)
+        label.setSelectable_(False)
+        label.setAlignment_(AppKit.NSTextAlignmentCenter)
+        label.setFont_(AppKit.NSFont.systemFontOfSize_(13))
+        label.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
+        label.setMaximumNumberOfLines_(MAX_LINES)
+        label.cell().setWraps_(True)
+        label.setHidden_(True)
+        view.addSubview_(label)
+        self._panel, self._view, self._label = p, view, label
 
     def update(self, state: str, muted: bool = False):
         """state: controller state. Visible for every non-idle state; bars follow output level when speaking."""
@@ -67,24 +148,49 @@ class Overlay:
         elif not want and self._shown:
             self._panel.orderOut_(None)
             self._shown = False
-            self._levels[:] = [0.0] * BARS
+            self._mouth = 0.0
             return
         if not self._shown:
             return
         t = time.monotonic()
-        # speaking: blue ripple driven by output level; listening: green bars rising from the centre with the
-        # live mic level (reacts to your voice); connecting/thinking: dim amber pulse.
+        # speaking: blue face, jaw follows the output level; listening: green, mouth reacts to your voice, eyes wide;
+        # connecting/thinking: amber, eyes glance up and to the side, mouth small.
         self._color = {"speaking": (0.35, 0.8, 1.0), "listening": (0.3, 0.9, 0.45)}.get(state, (1.0, 0.75, 0.3))
+        self._girl = state == "speaking"
         sp = self._level_fn() if state == "speaking" else 0.0
         mic = min(1.0, self._mic_fn() * 12) if state == "listening" else 0.0
-        for i in range(BARS):
-            ripple = 0.5 + 0.5 * math.sin(t * 9 + i * 0.7)
-            if state == "speaking":
-                target = min(1.0, sp * 4) * (0.35 + 0.65 * ripple)
-            elif state == "listening":
-                edge = 1.0 - abs(i - (BARS - 1) / 2) / (BARS / 2)  # tallest in the middle
-                target = 0.06 + mic * (0.3 + 0.7 * edge) * (0.6 + 0.4 * ripple)
-            else:
-                target = 0.08 + 0.07 * ripple
-            self._levels[i] += (target - self._levels[i]) * 0.5
+        if state == "speaking":
+            target = min(1.0, sp * 4) * (0.4 + 0.6 * abs(math.sin(t * 11)))
+        elif state == "listening":
+            target = 0.06 + mic * 0.6
+        else:
+            target = 0.12
+        self._mouth += (target - self._mouth) * 0.5
+        self._blink = (t % 3.6) < 0.12
+        self._look = (4.0, 4.0) if state in ("thinking", "connecting") else (0.0, 0.0)
+        self._caption()
         self._view.setNeedsDisplay_(True)
+
+    def _caption(self):
+        """Show the latest line (yours dim, vibi's light blue) under the bars; grow the panel only while it shows."""
+        import AppKit
+        from Foundation import NSMakeRect
+        role, text = captions.current()
+        want = bool(text)
+        lines = min(MAX_LINES, max(1, -(-len(text) // CHARS_PER_LINE))) if want else 0
+        if text and len(text) > MAX_LINES * CHARS_PER_LINE:  # more than fits: keep the newest part
+            text = "…" + text[-(MAX_LINES * CHARS_PER_LINE - 1):]
+        if (want, lines) != (self._cap, getattr(self, "_lines", 0)):
+            f = self._panel.frame()
+            h = H + (LINE_H * lines + 14 if want else 0)
+            self._panel.setFrame_display_(NSMakeRect(f.origin.x, f.origin.y, W, h), True)
+            self._view.setFrame_(NSMakeRect(0, 0, W, h))
+            self._label.setFrame_(NSMakeRect(16, 8, W - 32, LINE_H * lines + 2))
+            self._label.setHidden_(not want)
+            self._cap, self._lines = want, lines
+        if want and (role, text) != self._cap_key:
+            self._cap_key = (role, text)
+            self._label.setStringValue_(text)
+            col = (AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.7, 0.9, 1.0, 1.0) if role == "vibi"
+                   else AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.75, 1.0))
+            self._label.setTextColor_(col)

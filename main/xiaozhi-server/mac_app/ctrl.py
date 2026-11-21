@@ -315,10 +315,10 @@ class CtrlPanel:
     def url(self):
         return f"http://127.0.0.1:{self.port}/?t={self.token}"
 
-    def open(self):
+    def open(self, tab=None):
         if self.httpd is None:
             self.start()
-        webbrowser.open(self.url())
+        webbrowser.open(self.url() + (f"#{tab}" if tab else ""))
 
     def stop(self):
         if self.httpd:

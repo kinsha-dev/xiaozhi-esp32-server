@@ -27,7 +27,7 @@ button.act:hover{border-color:var(--acc)}
 <main id="main"></main><div id="toast"></div>
 <script>
 const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["board","Message board"],["components","Components"]];
-let tab=localStorage.getItem("vctrlTab")||"actions",timer;
+let tab=(TABS.find(x=>x[0]==location.hash.slice(1))||[])[0]||localStorage.getItem("vctrlTab")||"actions",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
