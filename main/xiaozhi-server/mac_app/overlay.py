@@ -25,6 +25,8 @@ class Overlay:
         self._shown = False
         self._mouth = 0.0
         self._girl = False
+        self._dance = False
+        self._t = 0.0
         self._look = (0.0, 0.0)
         self._blink = False
         self._label = None
@@ -45,69 +47,88 @@ class Overlay:
                 AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.08, 0.82).set()
                 AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(b, 18, 18).fill()
                 cx, cy, r = b.size.width / 2, b.size.height - H / 2, 40.0  # face sits in the top strip
-                R, G, B = outer._color
-                C = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_
-                oval = lambda x, y, w, h: AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x, y, w, h))
-                rrect = lambda x, y, w, h, rad: AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(x, y, w, h), rad, rad)
-                dark = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.1, 1.0)
-                ex, ey = outer._look
-                m = outer._mouth  # 0 closed .. 1 wide open
-                if outer._girl:  # speaking: a girl with long hair, lashes, cheeks and a smile that opens with the voice
-                    C(R, G, B, 0.22).set()
-                    oval(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 12).fill()
-                    C(0.30, 0.17, 0.10, 1).set()  # hair behind the face
-                    oval(cx - r - 7, cy - r - 4, 2 * r + 14, 2 * r + 12).fill()
-                    rrect(cx - r - 7, cy - r - 18, 17, 2 * r - 6, 8).fill()
-                    rrect(cx + r - 10, cy - r - 18, 17, 2 * r - 6, 8).fill()
-                    C(1.0, 0.85, 0.74, 1).set()  # skin
-                    oval(cx - r + 3, cy - r + 1, 2 * r - 6, 2 * r - 4).fill()
-                    C(0.30, 0.17, 0.10, 1).set()  # fringe
-                    fr = AppKit.NSBezierPath.bezierPath()
-                    fr.moveToPoint_((cx - r + 4, cy + 12))
-                    fr.curveToPoint_controlPoint1_controlPoint2_((cx + r - 4, cy + 12), (cx - 12, cy + r - 2), (cx + 18, cy + 4))
-                    fr.curveToPoint_controlPoint1_controlPoint2_((cx, cy + r + 3), (cx + r, cy + r), (cx + 22, cy + r + 4))
-                    fr.curveToPoint_controlPoint1_controlPoint2_((cx - r + 4, cy + 12), (cx - 24, cy + r + 4), (cx - r, cy + r - 2))
-                    fr.fill()
-                    C(1.0, 0.55, 0.6, 0.45).set()  # cheeks
-                    for sx in (-24, 24):
-                        oval(cx + sx - 7, cy - 9, 14, 9).fill()
-                    dark.set()
-                    eh = 2.0 if outer._blink else 9.0
-                    for sx in (-14, 14):
-                        oval(cx + sx - 4 + ex, cy + 2 + ey - eh / 2, 8, eh).fill()
-                        lash = AppKit.NSBezierPath.bezierPath()  # lashes: a flick at the outer corner
-                        lash.setLineWidth_(1.6)
-                        lash.moveToPoint_((cx + sx + (4 if sx > 0 else -4), cy + 2 + eh / 4))
-                        lash.lineToPoint_((cx + sx + (8 if sx > 0 else -8), cy + 2 + eh / 4 + 1.5))
-                        lash.stroke()
-                    mw, mh = 16 + 8 * m, 3 + 14 * m
-                    C(0.85, 0.25, 0.32, 1).set()
-                    rrect(cx - mw / 2, cy - 20 - mh / 2, mw, mh, min(mh / 2, 8)).fill()
-                else:  # listening / thinking: a square-jawed cartoon "Johnny": big blond quiff, shades, strong chin
-                    C(R, G, B, 0.22).set()
-                    rrect(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 16, 18).fill()
-                    C(0.98, 0.80, 0.30, 1).set()  # blond quiff
-                    rrect(cx - r + 2, cy + r - 14, 2 * r - 4, 26, 12).fill()
-                    oval(cx - r + 8, cy + r - 6, 44, 24).fill()
-                    C(0.93, 0.70, 0.52, 1).set()  # square face
-                    rrect(cx - r + 4, cy - r, 2 * r - 8, 2 * r - 4, 7).fill()
-                    C(0.98, 0.80, 0.30, 1).set()  # sideburns
-                    rrect(cx - r + 4, cy + 2, 6, 18, 2).fill()
-                    rrect(cx + r - 10, cy + 2, 6, 18, 2).fill()
-                    dark.set()  # sunglasses (a blink drops the bridge a little)
-                    sh = 5.0 if outer._blink else 13.0
-                    rrect(cx - 30 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
-                    rrect(cx + 4 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
-                    rrect(cx - 5, cy + 12, 10, 3, 1).fill()
-                    C(1, 1, 1, 0.55).set()
-                    if not outer._blink:
-                        rrect(cx - 26 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
-                        rrect(cx + 8 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
-                    mw, mh = 24 + 10 * m, 4 + 14 * m
-                    C(0.55, 0.15, 0.15, 1).set()
-                    rrect(cx - mw / 2, cy - 18 - mh / 2, mw, mh, 3).fill()
-                    C(0.80, 0.55, 0.38, 1).set()  # chin line
-                    rrect(cx - 14, cy - r + 3, 28, 3, 1).fill()
+                figs = [(outer._girl, cx, 0.0)]
+                if outer._dance:  # working: Johnny and the girl dance side by side, bouncing and swaying in turn
+                    figs = [(False, cx - 62, 0.0), (True, cx + 62, math.pi)]
+                for girl, fx, ph in figs:
+                    AppKit.NSGraphicsContext.saveGraphicsState()
+                    if outer._dance:
+                        tt = outer._t * 7 + ph
+                        tf = AppKit.NSAffineTransform.transform()
+                        tf.translateXBy_yBy_(fx, cy + abs(math.sin(tt)) * 9 - 6)
+                        tf.rotateByDegrees_(math.sin(tt) * 9)
+                        tf.scaleBy_(0.6)
+                        tf.translateXBy_yBy_(-cx, -cy)
+                        tf.concat()
+                    R, G, B = outer._color
+                    C = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_
+                    oval = lambda x, y, w, h: AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x, y, w, h))
+                    rrect = lambda x, y, w, h, rad: AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(x, y, w, h), rad, rad)
+                    dark = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.1, 1.0)
+                    ex, ey = outer._look
+                    m = outer._mouth  # 0 closed .. 1 wide open
+                    if girl:  # speaking: a girl with long hair, lashes, cheeks and a smile that opens with the voice
+                        C(R, G, B, 0.22).set()
+                        oval(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 12).fill()
+                        C(0.30, 0.17, 0.10, 1).set()  # hair behind the face
+                        oval(cx - r - 7, cy - r - 4, 2 * r + 14, 2 * r + 12).fill()
+                        rrect(cx - r - 7, cy - r - 18, 17, 2 * r - 6, 8).fill()
+                        rrect(cx + r - 10, cy - r - 18, 17, 2 * r - 6, 8).fill()
+                        C(1.0, 0.85, 0.74, 1).set()  # skin
+                        oval(cx - r + 3, cy - r + 1, 2 * r - 6, 2 * r - 4).fill()
+                        C(0.30, 0.17, 0.10, 1).set()  # fringe
+                        fr = AppKit.NSBezierPath.bezierPath()
+                        fr.moveToPoint_((cx - r + 4, cy + 12))
+                        fr.curveToPoint_controlPoint1_controlPoint2_((cx + r - 4, cy + 12), (cx - 12, cy + r - 2), (cx + 18, cy + 4))
+                        fr.curveToPoint_controlPoint1_controlPoint2_((cx, cy + r + 3), (cx + r, cy + r), (cx + 22, cy + r + 4))
+                        fr.curveToPoint_controlPoint1_controlPoint2_((cx - r + 4, cy + 12), (cx - 24, cy + r + 4), (cx - r, cy + r - 2))
+                        fr.fill()
+                        C(1.0, 0.55, 0.6, 0.45).set()  # cheeks
+                        for sx in (-24, 24):
+                            oval(cx + sx - 7, cy - 9, 14, 9).fill()
+                        dark.set()
+                        eh = 2.0 if outer._blink else 9.0
+                        for sx in (-14, 14):
+                            oval(cx + sx - 4 + ex, cy + 2 + ey - eh / 2, 8, eh).fill()
+                            lash = AppKit.NSBezierPath.bezierPath()  # lashes: a flick at the outer corner
+                            lash.setLineWidth_(1.6)
+                            lash.moveToPoint_((cx + sx + (4 if sx > 0 else -4), cy + 2 + eh / 4))
+                            lash.lineToPoint_((cx + sx + (8 if sx > 0 else -8), cy + 2 + eh / 4 + 1.5))
+                            lash.stroke()
+                        mw, mh = 16 + 8 * m, 3 + 14 * m
+                        C(0.85, 0.25, 0.32, 1).set()
+                        rrect(cx - mw / 2, cy - 20 - mh / 2, mw, mh, min(mh / 2, 8)).fill()
+                    else:  # listening / thinking: a square-jawed cartoon "Johnny": big blond quiff, shades, strong chin
+                        C(R, G, B, 0.22).set()
+                        rrect(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 16, 18).fill()
+                        C(0.98, 0.80, 0.30, 1).set()  # blond quiff
+                        rrect(cx - r + 2, cy + r - 14, 2 * r - 4, 26, 12).fill()
+                        oval(cx - r + 8, cy + r - 6, 44, 24).fill()
+                        C(0.93, 0.70, 0.52, 1).set()  # square face
+                        rrect(cx - r + 4, cy - r, 2 * r - 8, 2 * r - 4, 7).fill()
+                        C(0.98, 0.80, 0.30, 1).set()  # sideburns
+                        rrect(cx - r + 4, cy + 2, 6, 18, 2).fill()
+                        rrect(cx + r - 10, cy + 2, 6, 18, 2).fill()
+                        dark.set()  # sunglasses (a blink drops the bridge a little)
+                        sh = 5.0 if outer._blink else 13.0
+                        rrect(cx - 30 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
+                        rrect(cx + 4 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
+                        rrect(cx - 5, cy + 12, 10, 3, 1).fill()
+                        C(1, 1, 1, 0.55).set()
+                        if not outer._blink:
+                            rrect(cx - 26 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
+                            rrect(cx + 8 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
+                        mw, mh = 24 + 10 * m, 4 + 14 * m
+                        C(0.55, 0.15, 0.15, 1).set()
+                        rrect(cx - mw / 2, cy - 18 - mh / 2, mw, mh, 3).fill()
+                        C(0.80, 0.55, 0.38, 1).set()  # chin line
+                        rrect(cx - 14, cy - r + 3, 28, 3, 1).fill()
+                    if outer._dance:  # arms: two hands swinging up and down, opposite to each other
+                        AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.85, 0.74, 1).set()
+                        for sx, p in ((-1, 0.0), (1, math.pi)):
+                            hy = cy - r - 8 + 26 * abs(math.sin(outer._t * 7 + ph + p))
+                            AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx + sx * (r + 14) - 8, hy, 16, 16)).fill()
+                    AppKit.NSGraphicsContext.restoreGraphicsState()
 
         scr = AppKit.NSScreen.mainScreen().frame()
         rect = NSMakeRect(scr.origin.x + (scr.size.width - W) / 2, scr.origin.y + 90, W, H)
@@ -139,7 +160,7 @@ class Overlay:
 
     def update(self, state: str, muted: bool = False):
         """state: controller state. Visible for every non-idle state; bars follow output level when speaking."""
-        want = state in ("connecting", "thinking", "speaking", "listening") and not muted
+        want = state in ("connecting", "thinking", "speaking", "listening", "working") and not muted
         if want and not self._shown:
             if self._panel is None:
                 self._build()
@@ -157,12 +178,16 @@ class Overlay:
         # connecting/thinking: amber, eyes glance up and to the side, mouth small.
         self._color = {"speaking": (0.35, 0.8, 1.0), "listening": (0.3, 0.9, 0.45)}.get(state, (1.0, 0.75, 0.3))
         self._girl = state == "speaking"
+        self._dance = state in ("thinking", "working")
+        self._t = time.monotonic()
         sp = self._level_fn() if state == "speaking" else 0.0
         mic = min(1.0, self._mic_fn() * 12) if state == "listening" else 0.0
         if state == "speaking":
             target = min(1.0, sp * 4) * (0.4 + 0.6 * abs(math.sin(t * 11)))
         elif state == "listening":
             target = 0.06 + mic * 0.6
+        elif self._dance:
+            target = 0.4
         else:
             target = 0.12
         self._mouth += (target - self._mouth) * 0.5

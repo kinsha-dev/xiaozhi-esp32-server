@@ -9,6 +9,16 @@ from pathlib import Path
 
 from mac_app.ble_central import BleService, ensure_bluetooth_usage
 from mac_app.config import SERVER_DIR, load
+
+
+def cu_running(max_age=600):
+    """A computer-use run is active: its state file (data/computer_use/state.json) exists and is recent."""
+    f = Path(os.environ.get("VOICE_BOX_DATA", Path.home() / "esp/voice-note-box/data")) / "computer_use" / "state.json"
+    try:
+        return time.time() - f.stat().st_mtime < max_age
+    except OSError:
+        return False
+
 from mac_app.controller import Controller
 
 __all__ = ["Controller", "main"]
@@ -129,7 +139,8 @@ def main():
             self._show_remote()
             self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
             try:
-                overlay.update(s if ctl.voice_animation_enabled() else "idle")  # "idle": hidden when disabled
+                busy = s == "idle" and cu_running()  # a computer-use run is working in the background
+                overlay.update(("working" if busy else s) if ctl.voice_animation_enabled() else "idle")  # "idle": hidden when disabled
             except Exception as e:  # never let the overlay break the menu bar
                 print(f"[overlay] {e}", flush=True)
             self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
