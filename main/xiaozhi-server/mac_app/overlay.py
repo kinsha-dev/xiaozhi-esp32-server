@@ -1,4 +1,4 @@
-"""Floating avatar overlay (AppKit): a flat square face while it listens or thinks, a girl while it talks (mouth follows the
+"""Floating avatar overlay (AppKit): a square-jawed cartoon Johnny while it listens or thinks, a girl while it talks (mouth follows the
 speaker's output level, eyes blink), with live captions under it. Shown while vibi is active."""
 import math
 import time
@@ -83,17 +83,31 @@ class Overlay:
                     mw, mh = 16 + 8 * m, 3 + 14 * m
                     C(0.85, 0.25, 0.32, 1).set()
                     rrect(cx - mw / 2, cy - 20 - mh / 2, mw, mh, min(mh / 2, 8)).fill()
-                else:  # listening / thinking: a square robot-style face
+                else:  # listening / thinking: a square-jawed cartoon "Johnny": big blond quiff, shades, strong chin
                     C(R, G, B, 0.22).set()
-                    rrect(cx - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8, 20).fill()
-                    C(R, G, B, 1.0).set()
-                    rrect(cx - r, cy - r, 2 * r, 2 * r, 12).fill()
-                    dark.set()
-                    eh = 3.0 if outer._blink else 12.0
-                    for sx in (-15, 15):
-                        rrect(cx + sx - 6 + ex, cy + 7 + ey - eh / 2, 12, eh, 2).fill()
+                    rrect(cx - r - 6, cy - r - 6, 2 * r + 12, 2 * r + 16, 18).fill()
+                    C(0.98, 0.80, 0.30, 1).set()  # blond quiff
+                    rrect(cx - r + 2, cy + r - 14, 2 * r - 4, 26, 12).fill()
+                    oval(cx - r + 8, cy + r - 6, 44, 24).fill()
+                    C(0.93, 0.70, 0.52, 1).set()  # square face
+                    rrect(cx - r + 4, cy - r, 2 * r - 8, 2 * r - 4, 7).fill()
+                    C(0.98, 0.80, 0.30, 1).set()  # sideburns
+                    rrect(cx - r + 4, cy + 2, 6, 18, 2).fill()
+                    rrect(cx + r - 10, cy + 2, 6, 18, 2).fill()
+                    dark.set()  # sunglasses (a blink drops the bridge a little)
+                    sh = 5.0 if outer._blink else 13.0
+                    rrect(cx - 30 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
+                    rrect(cx + 4 + ex, cy + 6 + ey - sh / 2 + 3, 26, sh, 4).fill()
+                    rrect(cx - 5, cy + 12, 10, 3, 1).fill()
+                    C(1, 1, 1, 0.55).set()
+                    if not outer._blink:
+                        rrect(cx - 26 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
+                        rrect(cx + 8 + ex, cy + 12 + ey, 7, 2.5, 1).fill()
                     mw, mh = 24 + 10 * m, 4 + 14 * m
-                    rrect(cx - mw / 2, cy - 22 - mh / 2, mw, mh, 2).fill()
+                    C(0.55, 0.15, 0.15, 1).set()
+                    rrect(cx - mw / 2, cy - 18 - mh / 2, mw, mh, 3).fill()
+                    C(0.80, 0.55, 0.38, 1).set()  # chin line
+                    rrect(cx - 14, cy - r + 3, 28, 3, 1).fill()
 
         scr = AppKit.NSScreen.mainScreen().frame()
         rect = NSMakeRect(scr.origin.x + (scr.size.width - W) / 2, scr.origin.y + 90, W, H)
