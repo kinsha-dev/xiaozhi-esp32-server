@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.connection import ConnectionHandler
+from core import confirmation_window
 from core.utils import textUtils
 from core.utils.util import audio_to_data
 from core.providers.tts.dto.dto import SentenceType
@@ -21,14 +22,29 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
     if sentence_id is not None and sentence_id != conn.sentence_id:
         return
 
+    # Real reply audio, a closing tone, or an action chirp. The thinking loop
+    # is the one task that must not stop itself mid-send. Anyone else drops
+    # unsent modem packets before queueing this audio, and does not send tts
+    # stop — that would end the turn and the board would drop the reply.
+    if asyncio.current_task() is not getattr(conn, "_feedback_task", None):
+        from core.utils.tones import stop_turn_feedback
+
+        await stop_turn_feedback(conn)
+
     if conn.tts.tts_audio_first_sentence:
         conn.logger.bind(tag=TAG).info(f"Sending the first speech segment: {text}")
         conn.tts.tts_audio_first_sentence = False
 
+    if sentenceType is not SentenceType.LAST:
+        confirmation_window.note_spoken(text)  # a question: the next short answer gets an easier voice check
+
     if sentenceType == SentenceType.FIRST:
         # later messages of the same sentence join the flow-control queue; otherwise send immediately
+        from core.utils import audio_device
+
         if (
-            hasattr(conn, "audio_rate_controller")
+            audio_device.is_board(conn)  # the Mac app speaks from this text event, so it must never be delayed or dropped
+            and hasattr(conn, "audio_rate_controller")
             and conn.audio_rate_controller
             and getattr(conn, "audio_flow_control", {}).get("sentence_id")
             == conn.sentence_id
@@ -345,7 +361,10 @@ async def send_stt_message(conn: "ConnectionHandler", text):
     await conn.websocket.send(
         json.dumps({"type": "stt", "text": stt_text, "session_id": conn.session_id})
     )
-    await send_tts_message(conn, "start")
+    # Feedback already sent "start" so the ack could play. A second start makes
+    # the board enter speaking again and reset its decoder, which drops the ack.
+    if not getattr(conn, "_feedback_turn_open", False):
+        await send_tts_message(conn, "start")
     # after the start message the client enters the speaking state; sync the server state
     conn.client_is_speaking = True
 

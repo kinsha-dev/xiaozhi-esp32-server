@@ -196,6 +196,26 @@ class MacControlTests(unittest.TestCase):
         src = Path(mc.__file__).read_text()
         self.assertNotIn("shell=True", src)
 
+    def test_confirm_action_plays_one_action_tone(self):
+        conn = mock.MagicMock()
+        mc.ask_pi(conn, "fix the bug in signals.py")  # queues a risky pi_write pending item
+        with mock.patch.object(mc.subprocess, "run", return_value=ok()), \
+                mock.patch("core.utils.tones.play_tone", new=mock.AsyncMock()) as play_tone:
+            mc.confirm_action(conn)
+        kinds = [c.args[1] for c in play_tone.call_args_list]
+        self.assertEqual(kinds, ["action"])  # one tone, not a separate "confirm" chirp first
+        self.assertIs(play_tone.call_args_list[0].args[0], conn)
+        # The spoken result follows this chirp, so the chirp must not send the turn's stop.
+        self.assertFalse(play_tone.call_args.kwargs.get("close_turn", False))
+
+    def test_confirm_action_tone_failure_is_swallowed(self):
+        """No conn/loop (e.g. a plain unittest double) must never break the action itself."""
+        mc.ask_pi(None, "fix the bug in signals.py")
+        with mock.patch.object(mc.subprocess, "run", return_value=ok()) as run:
+            r = mc.confirm_action(None)
+        self.assertTrue(run.called)
+        self.assertIn("Answer one. Answer two.", r.response)
+
 
 if __name__ == "__main__":
     unittest.main()

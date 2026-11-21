@@ -12,6 +12,7 @@ import os
 import re
 import signal
 import subprocess
+import time
 import threading
 from pathlib import Path
 from urllib.parse import urlparse
@@ -53,11 +54,27 @@ def _public_https(url):
     return p.geturl(), None
 
 
+def _ensure_chrome():
+    """The browser agent attaches to a running Chrome; start one if none is up (it fails with chrome-not-running)."""
+    try:
+        if subprocess.run(["pgrep", "-x", "Google Chrome"], capture_output=True).returncode == 0:
+            return
+        subprocess.run(["open", "-a", "Google Chrome"], capture_output=True, timeout=10)
+        for _ in range(20):
+            time.sleep(0.5)
+            if subprocess.run(["pgrep", "-x", "Google Chrome"], capture_output=True).returncode == 0:
+                time.sleep(2)
+                return
+    except Exception:
+        pass
+
+
 def _run_jev(args):
     url, goal = args["url"], args["goal"]
     if not _busy.acquire(blocking=False):
         return ActionResponse(Action.RESPONSE, "busy", "A browser task is already running.")
     try:
+        _ensure_chrome()
         env = {**os.environ, "BH_TELEMETRY": "0", "BROWSER_HARNESS_TELEMETRY": "0", "ANONYMIZED_TELEMETRY": "0"}
         cmd = [UV_BIN, "run", "--env-file", ".env", "python", RUNNER, "--url", url, "--goal", goal]
         try:

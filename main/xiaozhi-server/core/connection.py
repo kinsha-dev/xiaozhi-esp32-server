@@ -20,6 +20,8 @@ from core.utils.util import (
     check_asr_update,
     filter_sensitive_info,
 )
+from core import board_heartbeat
+from core import board_link
 from typing import Dict, Any
 from collections import deque
 from core.utils.modules_initialize import (
@@ -38,6 +40,7 @@ from plugins_func.loadplugins import auto_import_modules
 from plugins_func.register import Action, ActionResponse, all_function_registry, module_func_map
 from core.auth import AuthenticationError
 from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
+from core.utils.ignore_gate import IgnoreGate
 from config.logger import setup_logging, build_module_string, create_connection_logger
 from core.utils.prompt_manager import PromptManager
 from core.utils.voiceprint_provider import VoiceprintProvider
@@ -233,6 +236,7 @@ class ConnectionHandler:
 
             # start the timeout check task
             self.timeout_task = asyncio.create_task(self._check_timeout())
+            asyncio.create_task(board_link.watch(self))
 
             # start the AEC cache cleanup task
             self._aec_cache_cleanup_task = asyncio.create_task(self._check_aec_cache_expiry())
@@ -323,6 +327,7 @@ class ConnectionHandler:
 
     async def _route_message(self, message):
         """Message routing"""
+        board_heartbeat.beat(self.device_id)
         # check whether the real bind status has been obtained
         if not self.bind_completed_event.is_set():
             # not yet obtained: wait until it is obtained or times out
@@ -1013,8 +1018,16 @@ class ConnectionHandler:
 
         # at the top level, create a new session ID and send the FIRST request
         if depth == 0:
-            current_sentence_id = str(uuid.uuid4().hex)
-            self.sentence_id = current_sentence_id  # update the shared attribute
+            from core.utils.tones import take_prepared_sentence_id
+
+            prepared = take_prepared_sentence_id(self)
+            if prepared:
+                # Feedback already claimed this id. A new one would reset the rate
+                # controller and cut off the wake ack or the thinking loop.
+                current_sentence_id = prepared
+            else:
+                current_sentence_id = str(uuid.uuid4().hex)
+                self.sentence_id = current_sentence_id  # update the shared attribute
             self.dialogue.put(Message(role="user", content=query))
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
@@ -1078,6 +1091,18 @@ class ConnectionHandler:
                 self.system_introduced_speakers.add(cs)
                 speaker_for_system = cs
 
+            if isinstance(query, str) and query:  # Vibi Ctrl: the command sent to the LLM; tool follow-ups are not logged
+                try:
+                    from plugins_func.functions import history_log as _hl
+                    sent = query
+                    if not getattr(self, "_prev_logged", False):  # first command of a wake-up: add last wake-up's summary
+                        self._prev_logged = True
+                        prev = _hl.previous_wakeup_summary()
+                        if prev:
+                            sent = f"{query}\n\nPrevious wake-up: {prev}"
+                    _hl.record_async("action", "llm_input", said=query, status="sent", source="llm", text=sent)
+                except Exception:
+                    pass
             if self.intent_type == "function_call" and functions is not None:
                 # use the streaming interface that supports functions
                 llm_responses = self.llm.response_with_functions(
@@ -1096,6 +1121,9 @@ class ConnectionHandler:
                 )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM processing error {query}: {e}")
+            from core.utils.tones import stop_turn_feedback_threadsafe
+
+            stop_turn_feedback_threadsafe(self)  # no audio will follow; don't leave the loop running
             return None
 
         # handle the streaming response
@@ -1104,6 +1132,8 @@ class ConnectionHandler:
         tool_calls_list = []  # format: [{"id": "", "name": "", "arguments": ""}]
         content_arguments = ""
         emotion_flag = True
+        ignore_gate = IgnoreGate()
+        closing_tone = False
         try:
             for response in llm_responses:
                 if self.client_abort:
@@ -1161,6 +1191,8 @@ class ConnectionHandler:
 
                 if content is not None and len(content) > 0:
                     if not tool_call_flag:
+                        content = ignore_gate.feed(content)  # "[ignore]" drops the reply; a bare "[ack]" does too
+                    if content and not tool_call_flag:
                         response_message.append(content)
                         self.tts.tts_text_queue.put(
                             TTSMessageDTO(
@@ -1189,6 +1221,28 @@ class ConnectionHandler:
                     )
                 )
             return
+        tail = ignore_gate.flush()  # a short reply that stayed undecided to the end
+        if tail and not tool_call_flag:
+            response_message.append(tail)
+            self.tts.tts_text_queue.put(
+                TTSMessageDTO(
+                    sentence_id=current_sentence_id,
+                    sentence_type=SentenceType.MIDDLE,
+                    content_type=ContentType.TEXT,
+                    content_detail=tail,
+                )
+            )
+        elif not tool_call_flag:
+            # Bare [ignore] / [ack] only. \"[ack] Done, timer set\" already passed through feed()
+            # as speech, so matched is None and the reply keeps its own stop.
+            from core.utils.tones import play_tone, take_closing_tone
+
+            kind = take_closing_tone(self, ignore_gate.matched, self.client_abort)
+            if kind:
+                closing_tone = True  # this tone sends the only stop; the LAST below would collide with it
+                asyncio.run_coroutine_threadsafe(
+                    play_tone(self, kind, close_turn=True), self.loop
+                )
         # handle function calls
         if tool_call_flag:
             bHasError = False
@@ -1329,7 +1383,7 @@ class ConnectionHandler:
             self.tts.store_tts_text(current_sentence_id, text_buff)
             self.dialogue.put(Message(role="assistant", content=text_buff))
 
-        if depth == 0:
+        if depth == 0 and not closing_tone:
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
                     sentence_id=current_sentence_id,
@@ -1495,6 +1549,9 @@ class ConnectionHandler:
     async def close(self, ws=None):
         """Resource cleanup"""
         try:
+            from core.utils.tones import stop_turn_feedback
+
+            await stop_turn_feedback(self)
             # clean up VAD connection resources
             if (
                     hasattr(self, "vad")
@@ -1699,6 +1756,8 @@ class ConnectionHandler:
                     self._last_keepalive = time.time()
                     try:
                         await self.websocket.send(json.dumps({"type": "keepalive"}))
+                        await asyncio.wait_for(await self.websocket.ping(), 10)  # the board's pong is the heartbeat
+                        board_heartbeat.beat(self.device_id)
                     except Exception:
                         pass
                 # check every 10 seconds to avoid being too frequent

@@ -69,6 +69,16 @@ _RISKY = re.compile(
     r"install|commit|push|deploy|restart|kill|move|overwrite|apply|patch|save)\b",
     re.I,
 )
+# Phrases that say the task is read-only; strip them before looking for risky words.
+_SAFE_PHRASES = re.compile(
+    r"\b(read[- ]only|(?:do not|don't|dont|never|without|no)\s+(?:\w+\s+){0,2}"
+    r"(?:edit\w*|chang\w*|modif\w*|writ\w*|updat\w*|delet\w*|creat\w*|sav\w*|push\w*|commit\w*|files?))\b",
+    re.I,
+)
+
+
+def _is_risky(task):
+    return bool(_RISKY.search(_SAFE_PHRASES.sub(" ", task or "")))
 
 _lock = threading.Lock()
 _pending = {}  # id -> {"kind", "args", "expires"}; only the newest is confirmable
@@ -93,10 +103,11 @@ def _load_allowlist():
     try:
         data = json.loads(ALLOWLIST.read_text())
     except (OSError, ValueError):
-        return {"apps": [], "shortcuts": []}
+        return {"apps": [], "shortcuts": [], "clicks": {}}
     return {
         "apps": [str(a) for a in data.get("apps", [])],
         "shortcuts": [str(s) for s in data.get("shortcuts", [])],
+        "clicks": data.get("clicks", {}) if isinstance(data.get("clicks"), dict) else {},
     }
 
 
@@ -251,7 +262,7 @@ def ask_pi(conn, task, allow_changes=False, project="trading"):
         return ActionResponse(Action.RESPONSE, "empty task", "What should I ask pi?")
     if len(task) > MAX_TASK_CHARS:
         return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
-    if allow_changes or _RISKY.search(task):
+    if allow_changes or _is_risky(task):
         return _create_pending("pi_write", {"task": task, "project": project}, f"That task may edit files in the {project or 'trading'} project: {_shorten(task, 120)}.")
     return _run_pi(task, write=False, project=project)
 
@@ -315,7 +326,7 @@ def ask_claude(conn, task, allow_changes=False, project="trading"):
         return ActionResponse(Action.RESPONSE, "empty task", "What should I ask Claude?")
     if len(task) > MAX_TASK_CHARS:
         return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
-    if allow_changes or _RISKY.search(task):
+    if allow_changes or _is_risky(task):
         return _create_pending("claude_write", {"task": task, "project": project}, f"That task may edit files in the {project or 'trading'} project: {_shorten(task, 120)}.")
     return _run_claude(task, write=False, project=project)
 
@@ -323,8 +334,40 @@ def ask_claude(conn, task, allow_changes=False, project="trading"):
 # ---------------------------------------------------------------------------------------------
 # Mac actions
 # ---------------------------------------------------------------------------------------------
-ACTIONS = ("set_volume", "mute", "play_pause", "lock_screen", "open_app", "run_shortcut")
+ACTIONS = ("set_volume", "mute", "play_pause", "lock_screen", "open_app", "run_shortcut", "click")
 CONFIRM_ACTIONS = ("run_shortcut",)  # only critical actions need the spoken yes
+
+
+def _resolve_click(arg):
+    """arg is '<app> <target>', e.g. 'VIDAA netflix'. Targets come from the allowlist file's
+    "clicks": {"VIDAA": {"netflix": [fx, fy]}} (fractions of the app window). Returns
+    ((app, fx, fy), error)."""
+    cfg = _load_allowlist()
+    text = (arg or "").strip().lower()
+    for app in cfg["apps"]:
+        targets = cfg["clicks"].get(app) or {}
+        if not text.startswith(app.lower() + " "):
+            continue
+        name = text[len(app) + 1:].strip()
+        for key, pos in targets.items():
+            if key.lower() == name and isinstance(pos, list) and len(pos) == 2:
+                return (app, float(pos[0]), float(pos[1])), None
+        return None, f"I don't know a {name} button in {app}."
+    return None, "That app has no click targets."
+
+
+_CLICK_SCRIPT = """
+tell application "{app}" to activate
+delay 1.2
+tell application "System Events"
+  tell process "{app}"
+    perform action "AXRaise" of window 1
+    set {{x0, y0}} to position of window 1
+    set {{w, h}} to size of window 1
+  end tell
+  click at {{x0 + w * {fx}, y0 + h * {fy}}}
+end tell
+"""
 
 
 def _validate(action, arg):
@@ -342,6 +385,8 @@ def _validate(action, arg):
     if action == "open_app":
         app = _match(arg, _load_allowlist()["apps"])
         return (app, None) if app else (None, "That app isn't in your allowed list.")
+    if action == "click":
+        return _resolve_click(arg)
     if action == "run_shortcut":
         sc = _match(arg, _load_allowlist()["shortcuts"])
         return (sc, None) if sc else (None, "That shortcut isn't in your allowed list.")
@@ -365,6 +410,10 @@ def _execute(action, arg):
     elif action == "open_app":
         r = _run(["open", "-a", arg])
         spoken = f"Opening {arg}."
+    elif action == "click":
+        app, fx, fy = arg
+        r = _run(["osascript", "-e", _CLICK_SCRIPT.format(app=app, fx=fx, fy=fy)])
+        spoken = "Clicked."
     elif action == "run_shortcut":
         r = _run(["shortcuts", "run", arg], timeout=60)
         spoken = f"Ran the {arg} shortcut."
@@ -383,7 +432,7 @@ mac_control_desc = {
         "name": "mac_control",
         "description": (
             "Control the user's Mac. Actions: set_volume (arg 0-100), mute, play_pause, lock_screen, "
-            "open_app (arg app name), run_shortcut (arg shortcut name). Only allowlisted apps and shortcuts "
+            "open_app (arg app name), run_shortcut (arg shortcut name), click (arg: app name then button name, e.g. VIDAA netflix; presses a named button in an allowlisted app window). Only allowlisted apps and shortcuts "
             "work. lock_screen and run_shortcut ask for spoken confirmation first."
         ),
         "parameters": {
@@ -431,6 +480,26 @@ confirm_action_desc = {
 }
 
 
+def _play_tone(conn, kind):
+    """Best-effort: a missing conn/loop (e.g. a unit test) must never break the action itself.
+
+    close_turn stays false: the spoken result follows, and it sends the turn's only stop.
+    """
+    try:
+        import asyncio
+        from core.utils.tones import play_tone
+
+        loop = conn.loop
+        tone = play_tone(conn, kind, close_turn=False)
+        try:
+            asyncio.run_coroutine_threadsafe(tone, loop)
+        except Exception:
+            tone.close()  # scheduling failed: don't leak an un-awaited coroutine
+            raise
+    except Exception:
+        pass
+
+
 @register_function("confirm_action", confirm_action_desc, ToolType.SYSTEM_CTL)
 def confirm_action(conn, token=None):
     with _lock:
@@ -439,8 +508,10 @@ def confirm_action(conn, token=None):
     if item is None or item["expires"] < _now():
         return ActionResponse(Action.RESPONSE, "nothing pending or expired", "Nothing is waiting for confirmation, or it has expired. Please ask again.")
     if item["kind"] == "claude_write":
+        _play_tone(conn, "action")
         return _run_claude(item["args"]["task"], write=True, project=item["args"].get("project"))
     if item["kind"] == "pi_write":
+        _play_tone(conn, "action")
         return _run_pi(item["args"]["task"], write=True, project=item["args"].get("project"))
     if item["kind"] == "mac":
         a = item["args"]
@@ -448,10 +519,12 @@ def confirm_action(conn, token=None):
         clean, err = _validate(a["action"], a["arg"])
         if err:
             return ActionResponse(Action.RESPONSE, err, err)
+        _play_tone(conn, "action")
         try:
             return _execute(a["action"], clean)
         except (OSError, subprocess.TimeoutExpired) as e:
             return ActionResponse(Action.RESPONSE, f"error: {e}", "That didn't work.")
     if item["kind"] in _handlers:
+        _play_tone(conn, "action")
         return _handlers[item["kind"]](item["args"])
     return ActionResponse(Action.RESPONSE, "unknown pending", "Nothing to confirm.")

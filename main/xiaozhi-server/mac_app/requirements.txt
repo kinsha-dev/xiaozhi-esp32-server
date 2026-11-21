@@ -1,2 +1,4 @@
 sounddevice
 rumps
+bleak
+webauthn

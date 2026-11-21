@@ -8,12 +8,12 @@ SPEECH = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 12000).astype(np
 SILENCE = bytes(FRAME)
 
 
-@pytest.mark.parametrize("text", ["Hi Bibi.", "hey vibi", "Hi, bee bee!", "hi vivi", "Hi, baby.", "hi bibi what time is it"])
+@pytest.mark.parametrize("text", ["Hi Bibi.", "hey vibi", "Hi, bee bee!", "hi vivi", "Hi, VB.", "hi bibi what time is it"])
 def test_matches(text):
     assert matches_wake(text)
 
 
-@pytest.mark.parametrize("text", ["Thank you.", "", "hi there", "bibi", "say hi bibi", "you"])
+@pytest.mark.parametrize("text", ["Thank you.", "", "hi there", "bibi", "say hi bibi", "you", "Hey baby.", "hi bobby", "high vibe"])
 def test_no_match(text):
     assert not matches_wake(text)
 
@@ -58,10 +58,10 @@ def test_non_matching_segment_returns_false():
     assert len(calls) == 1
 
 
-def test_long_segment_truncated_to_last_3s():
+def test_long_segment_truncated_to_last_8s():
     det, calls = make()
-    feed_all(det, [SPEECH] * 200 + [SILENCE] * 25)  # 6 s of speech
-    assert len(calls[0]) <= 3 * 16000
+    feed_all(det, [SPEECH] * 400 + [SILENCE] * 25)  # 12 s of speech
+    assert len(calls[0]) <= 8 * 16000
 
 
 def test_reset_between_segments():
@@ -88,3 +88,42 @@ def test_room_noise_is_not_transcribed():
     det, calls = make()
     feed_all(det, [noise] * 15 + [SILENCE] * 25)
     assert calls == []
+
+
+def test_last_result_matched_on_wake_phrase():
+    det, _ = make("hi bibi")
+    feed_all(det, [SPEECH] * 15 + [SILENCE] * 25)
+    assert det.last_result == "matched"
+
+
+def test_last_result_no_match_on_transcribed_near_miss():
+    det, _ = make("thank you")
+    feed_all(det, [SPEECH] * 15 + [SILENCE] * 25)
+    assert det.last_result == "no_match"
+
+
+def test_last_result_too_quiet_when_never_transcribed():
+    noise = (np.sin(np.linspace(0, 2 * np.pi * 200, FRAME // 2)) * 300).astype(np.int16).tobytes()
+    det, calls = make()
+    feed_all(det, [noise] * 15 + [SILENCE] * 25)
+    assert det.last_result == "too_quiet" and calls == []
+
+
+def test_last_result_stays_none_for_a_too_short_blip():
+    det, calls = make()
+    feed_all(det, [SPEECH] * 3 + [SILENCE] * 25)  # shorter than MIN_SPEECH_FRAMES
+    assert det.last_result is None and calls == []
+
+
+def test_denoise_suppresses_a_steady_tone_but_keeps_louder_speech_like_burst():
+    import numpy as np
+    from mac_app.wake import denoise, RATE
+
+    t = np.arange(RATE * 2) / RATE
+    music = 0.3 * np.sin(2 * np.pi * 440 * t)
+    voice = np.zeros_like(t)
+    voice[RATE // 2: RATE] = 0.6 * np.sin(2 * np.pi * 900 * t[RATE // 2: RATE])
+    out = denoise((music + voice).astype(np.float32))
+    assert out.shape == t.shape
+    quiet, loud = np.abs(out[: RATE // 4]).mean(), np.abs(out[RATE // 2 + 1000: RATE - 1000]).mean()
+    assert loud > 3 * quiet

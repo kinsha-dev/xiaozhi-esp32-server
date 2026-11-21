@@ -47,10 +47,29 @@ if str(_PROJECT_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 try:
     import opuslib_next  # noqa: F401
-except Exception:
+except Exception as _opus_import_error:
+    # opuslib_next is a ctypes binding; the pip package is pure Python and the real codec relies on the
+    # system libopus.so. When libopus is not installed on the runner the import fails, so a stub stands in here.
+    # The stub only keeps the import chain working; for real encoding/decoding libopus must be installed first
+    # (apt-get install libopus0, which is also how the production image Dockerfile-server-base installs it).
+    print(
+        f"[conftest] opuslib_next unavailable, using a stub: {_opus_import_error}",
+        flush=True,
+    )
+
+    def _opus_unavailable(_self, *_args, **_kwargs):
+        raise RuntimeError(
+            "libopus is not installed, Opus encoding/decoding cannot run. "
+            "Install: apt-get install libopus0 (the production image Dockerfile-server-base installs it the same way)"
+        )
+
     _stub = types.ModuleType("opuslib_next")
-    _stub.Encoder = type("Encoder", (), {"__init__": lambda *a, **kw: None})
-    _stub.Decoder = type("Decoder", (), {"__init__": lambda *a, **kw: None})
+    _stub.Encoder = type(
+        "Encoder", (), {"__init__": lambda *a, **kw: None, "encode": _opus_unavailable}
+    )
+    _stub.Decoder = type(
+        "Decoder", (), {"__init__": lambda *a, **kw: None, "decode": _opus_unavailable}
+    )
     _stub.APPLICATION_AUDIO = 0
     _stub.OpusError = type("OpusError", (Exception,), {})
     _stub.constants = types.SimpleNamespace()
@@ -267,40 +286,36 @@ def _install_mock_layer() -> None:
     # Shorten asyncio.sleep so retry loops do not slow the tests down.
     import asyncio
 
-    async def _fast_sleep(_seconds):
-        return None
+    _real_sleep = asyncio._real_sleep = getattr(asyncio, "_real_sleep", asyncio.sleep)
+
+    async def _fast_sleep(_seconds, result=None):
+        # Must still yield to the event loop: a no-yield sleep turns every
+        # `while True: ...; await asyncio.sleep(x)` loop into a hot spin that
+        # starves the loop and grows queues without bound (GBs of RAM).
+        await _real_sleep(0)
+        return result
 
     asyncio.sleep = _fast_sleep  # type: ignore[assignment]
 
-    # Network-layer mock: if the real httpx is loaded, replace its AsyncClient.send with
+    # Network-layer mock: if the real httpx is loaded, replace its send with
     # a stub that raises ConnectError immediately, so ``_should_retry`` reaches ``raise``
     # without sending real requests. Live mode does not install this layer at all.
     if not LIVE_API_TESTS:
         try:
-            import httpx as _httpx  # noqa: F401
+            import httpx as _httpx
 
-            class _FakeAsyncClient:
-                def __init__(self, *args, **kwargs):
-                    pass
+            async def _fake_async_send(self, request, **kwargs):
+                raise _httpx.ConnectError("MOCK: connect refused")
 
-                async def send(self, *args, **kwargs):
-                    raise _httpx.ConnectError("MOCK: connect refused")
+            def _fake_send(self, request, **kwargs):
+                raise _httpx.ConnectError("MOCK: connect refused")
 
-                async def aclose(self):
-                    return None
-
-            class _FakeClient:
-                def __init__(self, *args, **kwargs):
-                    pass
-
-                def send(self, *args, **kwargs):
-                    raise _httpx.ConnectError("MOCK: connect refused")
-
-                def close(self):
-                    return None
-
-            _httpx.AsyncClient = _FakeAsyncClient  # type: ignore[misc]
-            _httpx.Client = _FakeClient  # type: ignore[misc]
+            # Replace only the send method, not the whole class. Some libraries (openai 2.x's
+            # SyncHttpxClientWrapper) subclass httpx.Client and build requests themselves,
+            # and if the whole class were replaced they would inherit from a fake class and hit
+            # an AttributeError when building requests, with no sign the mock layer is the cause
+            _httpx.AsyncClient.send = _fake_async_send  # type: ignore[assignment]
+            _httpx.Client.send = _fake_send  # type: ignore[assignment]
         except ImportError:
             pass
 

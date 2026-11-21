@@ -8,10 +8,17 @@ import time
 import numpy as np
 from typing import Callable
 
-from mac_app.audio import AudioError
+from mac_app import earphones, tones, wake
+from mac_app.audio import AudioError, refresh_devices
 from mac_app.outbox import watch
 
 TAIL_S = 0.25  # ignore the mic this long after our own speech / a session
+HEARTBEAT_TIMEOUT = 300  # seconds without a board heartbeat before the menu bar shows X
+EARPHONE_CHECK_S = 3.0  # how often to look for other audio playing; the Bluetooth check runs every 5th time
+# One confused chirp per missed wake, then quiet. Without this, TV and nearby conversation
+# would chirp on every transcribed sentence (and a sticky detector result chirped every frame).
+CONFUSED_COOLDOWN_S = 20.0
+PENDING_TONE_COOLDOWN_S = 300.0  # the notification chirp repeats at most every 5 minutes while messages wait
 
 
 class Controller:
@@ -34,6 +41,12 @@ class Controller:
         self._loop = asyncio.new_event_loop()
         self._stop_async = None
         self.mic_level = 0.0
+        self.earphones_active = False  # Bluetooth headset is the mic and nothing else plays: the Mac app takes over from the board
+        self._bt_input = False
+        self._devices = None
+        self._earphone_tick = 0
+        self._confused_until = 0.0
+        self._voice_animation = None  # None until read; the menu redraw must not stat the file at 20 Hz
 
     # --- lifecycle ---------------------------------------------------------------------------
     def _flag(self):
@@ -53,9 +66,14 @@ class Controller:
 
     def start(self):
         self._announce_open()
+        f = self._mute_file()
+        if f is not None and f.exists():
+            self.muted = True  # Mute survives a restart
         threading.Thread(target=self._run_loop, daemon=True).start()
         threading.Thread(target=self._worker, daemon=True).start()
-        self._start_mic()
+        threading.Thread(target=self._watch_earphones, daemon=True).start()
+        if not self.muted:
+            self._start_mic()
 
     def stop(self):
         self._stop.set()
@@ -86,17 +104,60 @@ class Controller:
         if not self.muted:
             self._start_mic()
 
-    def set_muted(self, muted: bool):
+    def _mute_file(self):
+        return self.cfg.data_dir / "muted" if self.cfg.data_dir else None
+
+    def sync_mute(self, every: float = 1.0):
+        """Mute is shared through data/muted so the server (board audio, spoken updates, reminders) obeys it too.
+        Picks up a change made elsewhere (panel, CLI); cheap enough to call from the UI timer."""
+        now = time.monotonic()
+        f = self._mute_file()
+        if f is None or now - getattr(self, "_mute_sync", 0.0) < every:
+            return
+        self._mute_sync = now
+        if f.exists() != self.muted:
+            self.set_muted(f.exists(), write=False)
+
+    def set_muted(self, muted: bool, write: bool = True):
         self.muted = muted
+        f = self._mute_file()
+        if write and f is not None:
+            try:
+                f.write_text("1") if muted else f.unlink(missing_ok=True)
+            except OSError:
+                pass
         if muted:
             self._mic.stop()
         else:
             self._start_mic()
 
+    def board_ble_linked(self) -> bool:
+        """True while this app holds the Bluetooth link to the board (data/board_ble = our pid)."""
+        try:
+            return int((self.cfg.data_dir / "board_ble").read_text()) == os.getpid()
+        except (OSError, ValueError, AttributeError, TypeError):
+            return False
+
+    def board_link(self) -> str:
+        try:
+            m = (self.cfg.data_dir / "board_link").read_text().strip()
+        except (OSError, AttributeError, TypeError):
+            return "auto"
+        return m if m in ("auto", "bluetooth") else "auto"
+
+    def set_board_link(self, mode: str):
+        try:
+            (self.cfg.data_dir / "board_link").write_text(mode)
+        except (OSError, TypeError):
+            pass
+
     def board_connected(self) -> bool:
-        """True while the server reports a board connected (data/board_connected = "<server pid> <count>")."""
+        """True while the server reports a board connected (data/board_connected = "<server pid> <count>"),
+        or the board is linked to this app over Bluetooth."""
         if not self.cfg.data_dir:
             return False
+        if self.board_ble_linked():
+            return True
         try:
             pid, count = (self.cfg.data_dir / "board_connected").read_text().split()
             os.kill(int(pid), 0)
@@ -126,6 +187,45 @@ class Controller:
         m = self.device_mode()
         return m == "board" or (m == "auto" and self.board_connected())
 
+    def update_earphones(self, bluetooth_input: bool, other_audio: bool):
+        """Earphones take over when a Bluetooth headset is the mic, nothing else plays on the Mac and the board is not
+        forced. Returns True when that changed (the mic and speaker then reopen on the new default devices)."""
+        active = bluetooth_input and not other_audio and self.device_mode() != "board"
+        changed = active != self.earphones_active
+        self.earphones_active = active
+        return changed
+
+    def _watch_earphones(self):
+        while not self._stop.wait(EARPHONE_CHECK_S):
+            try:
+                if self.error and self.error.startswith("microphone") and not self.muted:
+                    self._start_mic()  # a reopen during a device switch can fail (-50); keep trying until it takes
+                if self._earphone_tick % 5 == 0:
+                    self._bt_input = earphones.bluetooth_input()
+                    devices = earphones.default_devices()
+                    if devices is not None and devices != self._devices:
+                        first, self._devices = self._devices is None, devices
+                        if not first:
+                            self._reopen_audio()  # the default mic/speaker changed: PortAudio keeps the old ones until reopened
+                self._earphone_tick += 1
+                everything_else = earphones.other_audio_playing({os.getpid()})
+                wake.background_audio = everything_else  # strict wake filtering only while something else is playing
+                other = everything_else if self._bt_input else False
+                if self.update_earphones(self._bt_input, other):
+                    self._reopen_audio()
+            except Exception:
+                pass
+
+    def _reopen_audio(self):
+        """The default mic/speaker changed (headset on or off): reopen them so they follow it."""
+        self._mic.stop()
+        refresh_devices()
+        reset = getattr(self._speaker, "reset", None)
+        if reset:
+            reset()
+        if not self.muted:
+            self._start_mic()
+
     @property
     def mirroring(self) -> bool:
         return self.board_state() != "idle"
@@ -140,9 +240,21 @@ class Controller:
         except (OSError, ValueError, AttributeError, TypeError):
             return "idle"
 
+    def board_alive(self) -> bool:
+        """False when the board has not proved it is alive (data/board_heartbeat) for HEARTBEAT_TIMEOUT seconds."""
+        if not self.cfg.data_dir:
+            return True
+        try:
+            return time.time() - float((self.cfg.data_dir / "board_heartbeat").read_text()) < HEARTBEAT_TIMEOUT
+        except (OSError, ValueError):
+            return False
+
     def display_state(self) -> str:
+        self.sync_mute()
         if self.error:
             return "error"
+        if self.device_mode() != "mac" and not self.board_alive() and not self.earphones_active:
+            return "offline"
         if self.muted:
             return "muted"
         if self.state == "idle":
@@ -174,31 +286,103 @@ class Controller:
             except queue.Empty:
                 continue
             if self.muted or self._active or self.defer_to_board() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
+                if self._active or self._speaker.is_busy():
+                    tones.stop()  # a chirp that already started must not keep playing over the reply
                 continue
-            if self._detector.feed(frame):
-                self.start_session("hi bibi")
+            matched_wake = self._detector.feed(frame)
+            result = self._consume_wake_result()
+            if matched_wake:
+                self.start_session(getattr(self._detector, "command", "") or "hi bibi")
+            elif result == "no_match":
+                self._chirp_confused()
+
+    def _consume_wake_result(self):
+        """The detector leaves last_result set until the next finished segment. Read it once."""
+        result = getattr(self._detector, "last_result", None)
+        if result is not None:
+            self._detector.last_result = None
+        return result
+
+    def _chirp_confused(self):
+        if self.muted or self._active or self._speaker.is_busy():
+            return
+        now = time.monotonic()
+        if now < self._confused_until:
+            return
+        self._confused_until = now + CONFUSED_COOLDOWN_S
+        tones.play_tone("confused")
 
     # --- sessions ----------------------------------------------------------------------------
+    def auto_speak(self) -> bool:
+        """Whether queued updates (Claude, phone notifications) start a session by themselves. Off by default:
+        they wait until the user says "hi vibi". Menu toggle, kept in data/mac_auto_speak."""
+        try:
+            return (self.cfg.data_dir / "mac_auto_speak").read_text().strip() == "1"
+        except (OSError, AttributeError, TypeError):
+            return False
+
+    def set_auto_speak(self, on: bool):
+        try:
+            (self.cfg.data_dir / "mac_auto_speak").write_text("1" if on else "0")
+        except (OSError, TypeError):
+            pass
+
+    def voice_animation_enabled(self) -> bool:
+        """Whether the floating wave overlay shows while vibi listens/thinks/speaks. On by default;
+        menu toggle, kept in data/voice_animation. Cached: the menu redraw calls this every 50 ms."""
+        if self._voice_animation is None:
+            self._voice_animation = self._read_voice_animation()
+        return self._voice_animation
+
+    def _read_voice_animation(self) -> bool:
+        try:
+            return (self.cfg.data_dir / "voice_animation").read_text().strip() != "0"
+        except (OSError, AttributeError, TypeError):
+            return True
+
+    def set_voice_animation(self, on: bool):
+        self._voice_animation = bool(on)
+        try:
+            (self.cfg.data_dir / "voice_animation").write_text("1" if on else "0")
+        except (OSError, TypeError):
+            pass
+
     def on_pending(self):
         if self.defer_to_board():
             return  # the board speaks it
         if self.muted:
             self._notify("vibi has a message (muted)")
-        else:
-            self.start_session("hi bibi")
+            return  # mute is silence; the notification is the only signal
+        if not self.auto_speak():
+            now = time.monotonic()
+            if not self._active and not self._speaker.is_busy() and now >= getattr(self, "_pending_tone_until", 0.0):
+                self._pending_tone_until = now + PENDING_TONE_COOLDOWN_S
+                tones.play_tone("pending")  # waits for "hi vibi"; don't chirp over a reply already playing
+            return
+        self.start_session("hi bibi", auto=True)
 
-    def start_session(self, text: str) -> bool:
+    def start_session(self, text: str, auto: bool = False, force: bool = False) -> bool:
+        if force and self._active and not self.muted:  # Vibi Ctrl rerun while a session sits open: end it, then replay
+            fut = getattr(self, "_sess_future", None)
+            if fut is not None:
+                fut.cancel()
+                for _ in range(30):
+                    if not self._active:
+                        break
+                    time.sleep(0.1)
         with self._lock:
-            if self._active or self.muted or self.defer_to_board():
+            if self._active or self.muted or (self.defer_to_board() and not force):  # force: Vibi Ctrl rerun
                 return False
+            tones.stop()  # a confused or pending chirp must not keep playing over the reply
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
-        asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q), self._loop)
+        self._sess_future = asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto), self._loop)
         return True
 
-    async def _run_session(self, text, q):
+    async def _run_session(self, text, q, auto=False):
         try:
-            await self._session_factory(q, self._set_state).run(text)
+            session = self._session_factory(q, self._set_state)
+            await (session.run(text, auto=True) if auto else session.run(text))
         finally:
             self._mute_until = time.monotonic() + TAIL_S
             self._active = False

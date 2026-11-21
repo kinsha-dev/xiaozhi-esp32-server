@@ -83,7 +83,11 @@ module_func_map = {}
 
 
 def register_function(name, desc, type=None):
-    """Decorator that registers a function in the function registry dictionary"""
+    """Register a function in the function registry dictionary (decorator)
+
+    Sync functions run in a worker thread, so the function body must not call asyncio event-loop APIs;
+    define it as async def if you need async work (httpx, await).
+    """
 
     def decorator(func):
         all_function_registry[name] = FunctionItem(name, desc, func, type)

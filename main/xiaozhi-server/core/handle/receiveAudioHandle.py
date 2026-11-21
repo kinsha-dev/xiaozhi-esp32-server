@@ -11,6 +11,7 @@ from core.handle.intentHandler import handle_user_intent
 from core.utils.output_counter import check_device_output_limit
 from core.handle.sendAudioHandle import send_stt_message, SentenceType
 
+MAC_FOLLOWUP_S = 45  # a Mac session is a conversation the user opened on purpose: allow a longer pause before the name is needed again
 TAG = __name__
 
 
@@ -47,6 +48,10 @@ async def resume_vad_detection(conn: "ConnectionHandler"):
 
 
 async def startToChat(conn: "ConnectionHandler", text):
+    from core.utils import audio_device
+
+    if audio_device.is_board(conn) and audio_device.muted():
+        return  # Mute is on: no ASR result, LLM or TTS reply for the board
     # check whether the input is JSON (contains speaker information)
     speaker_name = None
     actual_text = text
@@ -75,11 +80,45 @@ async def startToChat(conn: "ConnectionHandler", text):
         # if parsing fails, keep using the original text
         pass
 
+    try:  # history for the Vibi Ctrl panel
+        from plugins_func.functions import history_log as _hl
+        if actual_text and actual_text.strip():
+            _hl.record("command", said=_hl.clean(json.loads(actual_text).get("content", actual_text)
+                                                 if actual_text.strip().startswith("{") else actual_text), source="voice")
+    except Exception:
+        pass
+
     # save the speaker information on the connection object
     if speaker_name:
         conn.current_speaker = speaker_name
     else:
         conn.current_speaker = None
+
+    passed_name_filter = False
+    if conn.client_listen_mode != "manual":
+        from core.utils import name_filter
+
+        heard = actual_text
+        try:
+            if heard.strip().startswith("{"):
+                heard = json.loads(heard).get("content", heard)
+        except (ValueError, AttributeError):
+            pass
+        if not audio_device.is_board(conn) and not getattr(conn, "_mac_wake_seen", False):
+            # The Mac app only opens a session after it heard "hi vibi" itself and sends the rest as the command, so the
+            # session's first turn has no name in it by design; later turns need the name or the follow-up window.
+            conn._mac_wake_seen = True
+            conn._followup_until = time.time() + MAC_FOLLOWUP_S
+        if not name_filter.should_answer(heard, getattr(conn, "_followup_until", 0.0)):
+            conn.logger.bind(tag=TAG).info(f"Ignored (no \"Vibi\" in it): {str(heard)[:80]}")
+            return
+        conn._followup_until = time.time() + (name_filter.FOLLOWUP_S if audio_device.is_board(conn) else MAC_FOLLOWUP_S)
+        passed_name_filter = True
+        from core.utils import utterance_dedupe
+
+        if utterance_dedupe.is_duplicate(heard, id(conn)):
+            conn.logger.bind(tag=TAG).info(f"Dropped duplicate (the other device already answered): {str(heard)[:80]}")
+            return
 
     if conn.need_bind:
         await check_bind_device(conn)
@@ -97,8 +136,27 @@ async def startToChat(conn: "ConnectionHandler", text):
     if conn.client_is_speaking and conn.client_listen_mode != "manual":
         await handleAbortMessage(conn)
 
+    # The name filter just accepted this utterance. Ack before the intent/LLM wait
+    # so the board hears it immediately. The goodbye prompt is not that moment.
+    if passed_name_filter and not conn.close_after_chat:
+        conn.client_abort = False  # the abort above ended the previous playback, not this turn
+        conn._feedback_turn_open = False
+        conn._wake_ack_played = False
+        conn._feedback_sentence_ready = False
+        from core.utils.tones import open_feedback_turn
+
+        await open_feedback_turn(conn)
+        if conn.client_abort:
+            return
+
     # run intent analysis first, using the actual text content
     intent_handled = await handle_user_intent(conn, actual_text)
+
+    if conn.client_abort:
+        from core.utils.tones import stop_turn_feedback
+
+        await stop_turn_feedback(conn)
+        return
 
     if intent_handled:
         # if the intent was already handled, do not chat any more
@@ -107,8 +165,10 @@ async def startToChat(conn: "ConnectionHandler", text):
     # intent not handled, continue the regular chat flow, using the actual text content
     await send_stt_message(conn, actual_text)
 
-    # prepare to start a new session
-    conn.client_abort = False
+    # prepare to start a new session. Feedback already cleared a stale abort; clearing it again
+    # would talk over a barge-in that happened while the ack was playing.
+    if not getattr(conn, "_feedback_sentence_ready", False):
+        conn.client_abort = False
 
     conn.executor.submit(conn.chat, actual_text)
 

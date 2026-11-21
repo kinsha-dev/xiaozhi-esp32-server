@@ -94,8 +94,24 @@ async def checkWakeupWords(conn: "ConnectionHandler", text):
     if filtered_text not in conn.config.get("wakeup_words"):
         return False
 
+    from core.utils import tones as tone_mod
+
+    if not await tone_mod.release_for_cached_wakeup(conn):
+        return True  # this turn's ack was barged in on; do not clear that and play a greeting
+
     conn.just_woken_up = True
-    await send_tts_message(conn, "start")
+    if not getattr(conn, "_feedback_turn_open", False):
+        # The name filter did not already open the turn (manual listen, or the
+        # transcript reached here without it). "start" then a settle, then the ack.
+        await send_tts_message(conn, "start")
+        if tone_mod.SPEAKING_SETTLE_S:
+            await asyncio.sleep(tone_mod.SPEAKING_SETTLE_S)
+        if conn.client_abort:
+            return True
+    await tone_mod.play_wake_ack(conn, flush=True)
+    if conn.client_abort:
+        return True
+    conn._feedback_sentence_ready = False
 
     # get the current voice
     voice = getattr(conn.tts, "voice", "default")

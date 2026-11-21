@@ -1,12 +1,18 @@
 """Server-side plugin tool executor"""
 
 import asyncio
+import functools
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.connection import ConnectionHandler
 from ..base import ToolType, ToolDefinition, ToolExecutor
 from plugins_func.register import all_function_registry, module_func_map, Action, ActionResponse
+
+# Dedicated plugin thread pool: not the asyncio default pool (DNS resolution, ASR, initialize_modules etc. use it),
+# so a slow plugin cannot fill the default pool and stall DNS resolution and connection setup for every coroutine.
+_PLUGIN_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="plugin")
 
 
 class ServerPluginExecutor(ToolExecutor):
@@ -28,23 +34,21 @@ class ServerPluginExecutor(ToolExecutor):
 
         try:
             # decide how to call it according to the tool type
-            if hasattr(func_item, "type"):
-                func_type = func_item.type
-                if func_type.code in [4, 5]:  # SYSTEM_CTL, IOT_CTL (need the conn parameter)
-                    result = func_item.func(conn, **arguments)
-                elif func_type.code == 2:  # WAIT
-                    result = func_item.func(**arguments)
-                elif func_type.code == 3:  # CHANGE_SYS_PROMPT
-                    result = func_item.func(conn, **arguments)
-                else:
-                    result = func_item.func(**arguments)
-            else:
-                # do not pass conn by default
-                result = func_item.func(**arguments)
+            func_type = getattr(func_item, "type", None)
+            if func_type is not None and func_type.code in [3, 4, 5]:
+                # CHANGE_SYS_PROMPT, SYSTEM_CTL, IOT_CTL (need the conn parameter)
+                call = functools.partial(func_item.func, conn, **arguments)
+            else:  # WAIT etc. do not pass conn (including plugins with no type)
+                call = functools.partial(func_item.func, **arguments)
 
-            # support async def tool functions
-            if asyncio.iscoroutine(result):
-                result = await result
+            if asyncio.iscoroutinefunction(func_item.func):
+                result = await call()
+            else:
+                # A sync function run directly on the loop thread would stall the whole event loop; use a dedicated thread pool.
+                result = await asyncio.get_running_loop().run_in_executor(_PLUGIN_POOL, call)
+                # also support sync functions that return a coroutine
+                if asyncio.iscoroutine(result):
+                    result = await result
 
             return result
 

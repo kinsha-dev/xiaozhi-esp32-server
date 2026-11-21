@@ -1,5 +1,6 @@
 """Unified tool manager"""
 
+import time
 from typing import Dict, List, Optional, Any
 from config.logger import setup_logging
 from plugins_func.register import Action, ActionResponse
@@ -93,13 +94,27 @@ class ToolManager:
 
             # execute the tool
             self.logger.info(f"Executing tool: {tool_name}, arguments: {arguments}")
+            _t0 = time.monotonic()
             result = await executor.execute(self.conn, tool_name, arguments)
             self.logger.debug(f"Tool execution result: {result}")
+            self._record_history(tool_name, arguments, result, time.monotonic() - _t0)
             return result
 
         except Exception as e:
             self.logger.error(f"Error executing tool {tool_name}: {e}")
             return ActionResponse(action=Action.ERROR, response=str(e))
+
+    def _record_history(self, tool_name, arguments, result, duration=None):
+        """Append the call to data/history.jsonl for the Vibi Ctrl panel (never raises)."""
+        try:
+            from plugins_func.functions import history_log as hl
+            act = getattr(getattr(result, "action", None), "name", "")
+            bad = act in ("ERROR", "NOTFOUND")
+            text = getattr(result, "response", None) or getattr(result, "result", None) or ""
+            hl.record_async("action", tool_name, said=hl.last_user_text(self.conn), args=arguments,
+                            status="error" if bad else "ok", result=text, duration=duration)
+        except Exception:
+            pass
 
     def get_supported_tool_names(self) -> List[str]:
         """Get the names of all supported tools"""

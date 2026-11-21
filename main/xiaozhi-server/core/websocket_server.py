@@ -48,6 +48,7 @@ def _publish_boards():
         pass
 
 
+from core import board_heartbeat
 from core.connection import ConnectionHandler
 from core.auth import AuthManager, AuthenticationError
 from core.utils.modules_initialize import initialize_modules
@@ -148,6 +149,7 @@ class WebSocketServer:
         is_board = device_id != "mac-app"
         token = object()
         if is_board:
+            board_heartbeat.beat(device_id)
             _boards.add(token)
             _publish_boards()
         try:

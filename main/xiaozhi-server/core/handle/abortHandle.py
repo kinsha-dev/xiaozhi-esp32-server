@@ -11,6 +11,9 @@ async def handleAbortMessage(conn: "ConnectionHandler"):
     # set the abort state, which automatically interrupts the LLM and TTS tasks
     conn.close_after_chat = False
     conn.client_abort = True
+    from core.utils.tones import stop_turn_feedback
+
+    await stop_turn_feedback(conn)  # drop the thinking loop; do not clear client_abort
     conn.clear_queues()
     # interrupt the client speaking state
     await conn.websocket.send(

@@ -60,6 +60,13 @@ def _build_provider():
     ptype = get_provider_type("LLM", name)
     if not ptype:
         pytest.skip(f"LLM '{name}' type field missing")
+    if not LIVE_API_TESTS:
+        # Mock mode blocks the network, so this pipeline cannot get a real reply and would only be a connection failure.
+        # To verify this pipeline, run with RUN_LIVE_API_TESTS=1 and a real key
+        pytest.skip(
+            f"Mock mode sends no real request, skipping the pipeline check of LLM '{name}'."
+            "Live mode: export RUN_LIVE_API_TESTS=1 and fill in a real key before running."
+        )
     from core.utils.llm import create_instance
 
     return create_instance(ptype, cfg)

@@ -10,13 +10,18 @@ RATE = 16000
 FRAME_MS = 30
 END_SILENCE_FRAMES = 20  # 600 ms of silence closes a segment
 MIN_SPEECH_FRAMES = 8  # shorter blips are noise
-MAX_SEGMENT_S = 3
+MAX_SEGMENT_S = 8  # room for "hi vibi" plus a short command
 MIN_PEAK = 0.03  # quieter than this is room noise; do not spend Whisper time on it
 PREROLL_FRAMES = 10  # VAD fires late; keep 300 ms before onset so "Hi" isn't clipped
 
-_GREET = {"hi", "hey", "hay", "high", "hai"}
-_NAMES = {"bibi", "vibi", "vivi", "bebe", "bibbi", "vibe", "bibie", "vibie", "bibby", "bubi", "baby", "babi", "bobby", "bebi"}
+_GREET = {"hi", "hey", "hai"}
+# Only the ways "vibi" is really misheard. Ordinary words ("baby", "bobby", "vibe") are left out: songs and videos woke the app.
+_NAMES = {"bibi", "vibi", "vivi", "bibbi", "bibie", "vibie", "bibby", "vb"}
 _PAIRS = {("bee", "bee"), ("vee", "vee"), ("be", "be"), ("bi", "bi"), ("vi", "vi")}
+
+
+NOISE_QUIET = 0.005  # frame rms of a quiet room (~ -46 dBFS): relaxed detection
+NOISE_LOUD = 0.02  # frame rms of a noisy room (~ -34 dBFS): strict detection
 
 
 def _tokens(text: str):
@@ -34,6 +39,16 @@ def matches_wake(text: str, phrase: str = "hi bibi") -> bool:
     return len(toks) >= 3 and (toks[1], toks[2]) in _PAIRS
 
 
+def wake_command(text: str, phrase: str = "hi bibi") -> str:
+    """What was said after the wake phrase in the same breath ("hi vibi what time is it" -> "what time is it")."""
+    toks = _tokens(text)
+    if not matches_wake(text, phrase):
+        return ""
+    names = _NAMES | set(_tokens(phrase)[1:])
+    used = 2 if toks[1] in names else 3
+    return " ".join(toks[used:])
+
+
 class WakeDetector:
     def __init__(self, transcribe: Callable[[np.ndarray], str], phrase: str = "hi bibi", vad=None):
         self._transcribe = transcribe
@@ -43,6 +58,10 @@ class WakeDetector:
 
             vad = webrtcvad.Vad(2)
         self._vad = vad
+        self._noise = None  # running rms of non-speech frames
+        self._mode = None
+        self.command = ""  # text spoken after the wake phrase in the segment that last matched
+        self.last_result = None  # None | "too_quiet" | "no_match" | "matched": outcome of the last finished segment
         self._reset()
 
     def _reset(self):
@@ -51,9 +70,30 @@ class WakeDetector:
         self._speech = 0
         self._silence = 0
 
+    def strictness(self) -> float:
+        """0.0 in a quiet room (relaxed), 1.0 when background noise is present (strict)."""
+        if self._noise is None:
+            return 0.0
+        return min(1.0, max(0.0, (self._noise - NOISE_QUIET) / (NOISE_LOUD - NOISE_QUIET)))
+
+    def _adapt(self, t: float):
+        mode = 1 if t < 0.33 else 2 if t < 0.66 else 3
+        if mode != self._mode and hasattr(self._vad, "set_mode"):
+            self._vad.set_mode(mode)
+        self._mode = mode
+
     def feed(self, frame: bytes) -> bool:
         """Feed one 30 ms 16 kHz int16 mono frame. True once when a finished segment matches the phrase."""
-        if self._vad.is_speech(frame, RATE):
+        speech = self._vad.is_speech(frame, RATE)
+        if not speech:
+            f = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+            rms = float(np.sqrt(np.mean(f * f))) if len(f) else 0.0
+            if self._noise is None:
+                self._noise = rms
+            else:  # rises slowly, falls fast, so a passing sound does not make the room "noisy"
+                self._noise += (0.02 if rms > self._noise else 0.1) * (rms - self._noise)
+            self._adapt(self.strictness())
+        if speech:
             if not self._frames:
                 self._frames.extend(self._preroll)
             self._frames.append(frame)
@@ -69,31 +109,85 @@ class WakeDetector:
             return False
         frames, speech = self._frames, self._speech
         self._reset()
-        if speech < MIN_SPEECH_FRAMES:
+        t = self.strictness()
+        if speech < round(MIN_SPEECH_FRAMES * (0.75 + 0.75 * t)):  # 6 frames quiet .. 12 noisy
             return False
         pcm = np.frombuffer(b"".join(frames), dtype=np.int16)[-MAX_SEGMENT_S * RATE:]
         audio = pcm.astype(np.float32) / 32768.0
         peak = float(np.abs(audio).max()) if len(audio) else 0.0
         if os.environ.get("MAC_APP_DEBUG"):
             print(f"[wake] segment {len(audio) / RATE:.1f}s peak={peak:.3f}", flush=True)
-        if peak < MIN_PEAK:
+        min_peak = MIN_PEAK * (0.67 + 0.33 * t)
+        if t > 0 and self._noise:
+            min_peak = max(min_peak, self._noise * 4 * t)  # in noise the voice must clearly stand out
+        if peak < min_peak:
+            self.last_result = "too_quiet"  # room noise, not a speech attempt: stays silent, no tone
             return False
         if peak < 0.5:  # quiet laptop mic: bring speech up to a level Whisper handles well
             audio = audio * (0.5 / peak)
-        return matches_wake(self._transcribe(audio), self._phrase)
+        if background_audio:
+            audio = denoise(audio)
+        heard = self._transcribe(audio)
+        self.command = wake_command(heard, self._phrase)
+        matched = matches_wake(heard, self._phrase)
+        self.last_result = "matched" if matched else "no_match"
+        return matched
+
+
+def denoise(audio: np.ndarray) -> np.ndarray:
+    """Noise-cancel a wake segment while other audio (music, video) plays: keep the speech band, then spectral-gate.
+
+    The steady part of the background (the per-frequency floor across the segment) is subtracted, so a voice that
+    rises above it stays and the music bed under it is pushed down.
+    """
+    from scipy.signal import butter, sosfiltfilt, stft, istft
+
+    if audio.size < RATE // 2:
+        return audio
+    audio = sosfiltfilt(butter(4, [150, 3800], btype="band", fs=RATE, output="sos"), audio)
+    _, _, Z = stft(audio, fs=RATE, nperseg=512)
+    mag = np.abs(Z)
+    floor = np.percentile(mag, 30, axis=1, keepdims=True)  # what each frequency does when nobody speaks over it
+    gain = np.clip((mag - 1.5 * floor) / (mag + 1e-9), 0.05, 1.0)
+    _, out = istft(Z * gain, fs=RATE, nperseg=512)
+    out = out[: audio.size].astype(np.float32)
+    peak = float(np.abs(out).max())
+    return out * (0.5 / peak) if 0 < peak < 0.5 else out
 
 
 _model = None
 
 
-def whisper_transcriber(model: str = "small") -> Callable[[np.ndarray], str]:
+background_audio = False  # set by the Controller while another app is playing sound on the Mac (music, video, TV)
+
+
+def whisper_transcriber(model: str = "") -> Callable[[np.ndarray], str]:
     def transcribe(audio: np.ndarray) -> str:
         global _model
         if _model is None:
+            import torch
             import whisper
 
-            _model = whisper.load_model(model)
-        return _model.transcribe(audio, fp16=False, language="en", condition_on_previous_text=False,
-                                  initial_prompt="Hi bibi. Hey bibi.")["text"]
+            # Only "Hi bibi" has to be recognised, so a small model and few threads are enough; "small" on every
+            # noise segment kept the whole Mac at 250%+ CPU.
+            torch.set_num_threads(int(os.environ.get("MAC_APP_WAKE_THREADS", "2")))
+            _model = whisper.load_model(model or os.environ.get("MAC_APP_WAKE_MODEL", "base"))
+        result = _model.transcribe(audio, fp16=False, language="en", condition_on_previous_text=False,
+                                    initial_prompt="Hi bibi. Hey bibi.")
+        # The initial_prompt above biases Whisper toward "hi bibi"-shaped text even on music or noise with no
+        # real speech in it; when Whisper itself is not confident it heard speech, don't trust the words it typed.
+        segs = result.get("segments") or []
+        if segs:
+            no_speech = sum(s.get("no_speech_prob", 0.0) for s in segs) / len(segs)
+            avg_logprob = sum(s.get("avg_logprob", 0.0) for s in segs) / len(segs)
+            if background_audio:
+                # Music/video in the background makes Whisper type "hi bibi"-shaped text from the prompt: be strict.
+                if no_speech > 0.5 or avg_logprob < -0.8:
+                    print(f"[wake] rejected (background audio) {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
+                    return ""
+            elif no_speech > 0.6 or avg_logprob < -1.3:
+                # Quiet room: logged only, the "bibi" match decides, a confidence cutoff must never block a real "hi vibi".
+                print(f"[wake] low confidence {result['text']!r} no_speech={no_speech:.2f} logprob={avg_logprob:.2f}", flush=True)
+        return result["text"]
 
     return transcribe
