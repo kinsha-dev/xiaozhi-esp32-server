@@ -65,7 +65,7 @@ class SimpleHttpServer:
                 async def board_link_handler(_request):
                     from core import board_link
 
-                    return web.Response(text=board_link.read_mode())
+                    return web.Response(text=board_link.probe_body())
 
                 # 添加路由
                 app.add_routes(

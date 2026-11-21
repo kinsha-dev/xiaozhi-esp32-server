@@ -69,6 +69,16 @@ _RISKY = re.compile(
     r"install|commit|push|deploy|restart|kill|move|overwrite|apply|patch|save)\b",
     re.I,
 )
+# Phrases that say the task is read-only; strip them before looking for risky words.
+_SAFE_PHRASES = re.compile(
+    r"\b(read[- ]only|(?:do not|don't|dont|never|without|no)\s+(?:\w+\s+){0,2}"
+    r"(?:edit\w*|chang\w*|modif\w*|writ\w*|updat\w*|delet\w*|creat\w*|sav\w*|push\w*|commit\w*|files?))\b",
+    re.I,
+)
+
+
+def _is_risky(task):
+    return bool(_RISKY.search(_SAFE_PHRASES.sub(" ", task or "")))
 
 _lock = threading.Lock()
 _pending = {}  # id -> {"kind", "args", "expires"}; only the newest is confirmable
@@ -251,7 +261,7 @@ def ask_pi(conn, task, allow_changes=False, project="trading"):
         return ActionResponse(Action.RESPONSE, "empty task", "What should I ask pi?")
     if len(task) > MAX_TASK_CHARS:
         return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
-    if allow_changes or _RISKY.search(task):
+    if allow_changes or _is_risky(task):
         return _create_pending("pi_write", {"task": task, "project": project}, f"That task may edit files in the {project or 'trading'} project: {_shorten(task, 120)}.")
     return _run_pi(task, write=False, project=project)
 
@@ -315,7 +325,7 @@ def ask_claude(conn, task, allow_changes=False, project="trading"):
         return ActionResponse(Action.RESPONSE, "empty task", "What should I ask Claude?")
     if len(task) > MAX_TASK_CHARS:
         return ActionResponse(Action.RESPONSE, "task too long", "That request is too long. Please shorten it.")
-    if allow_changes or _RISKY.search(task):
+    if allow_changes or _is_risky(task):
         return _create_pending("claude_write", {"task": task, "project": project}, f"That task may edit files in the {project or 'trading'} project: {_shorten(task, 120)}.")
     return _run_claude(task, write=False, project=project)
 
