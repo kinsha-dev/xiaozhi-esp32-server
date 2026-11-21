@@ -58,7 +58,7 @@ _NO_WEB = ["NotebookEdit", "WebFetch", "WebSearch"]
 DENY_READ = ["Edit", "Write"] + _NO_WEB + BASH_DENY
 DENY_WRITE = _NO_WEB + BASH_DENY
 CLAUDE_TASKS_DIR = DATA_DIR / "claude_tasks"
-CONFIRM_TTL = 60
+CONFIRM_TTL = 120
 MAX_TASK_CHARS = 1000
 DEFAULT_ALLOWLIST = {"apps": ["Safari", "Notes", "Calendar", "Music", "Spotify", "Terminal"], "shortcuts": []}
 
@@ -125,7 +125,8 @@ def _create_pending(kind, args, prompt):
     with _lock:
         _pending.clear()  # a new request replaces any earlier one, so "yes" always means the latest
         _pending[next(_ids)] = {"kind": kind, "args": args, "expires": now + CONFIRM_TTL}
-    spoken = f"{prompt} Do you want me to go ahead? Say yes, confirm. That expires in a minute."
+    # ends in "?" so the reply window opens and a bare "yes, confirm" is accepted without saying "Vibi" first
+    spoken = f"{prompt} This expires in two minutes. Say yes, confirm. Do you want me to go ahead?"
     return ActionResponse(Action.RESPONSE, f"Waiting for the user's spoken yes to: {prompt}", spoken)
 
 
