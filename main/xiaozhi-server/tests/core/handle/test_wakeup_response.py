@@ -40,7 +40,7 @@ def wakeup_runtime(tmp_path, monkeypatch):
                         struct.pack(
                             "<h", int(8000 * math.sin(2 * math.pi * 440 * i / 22050))
                         )
-                        # 1.1s 源音频：给重采样留裕量，规避重采样器 off-by-one
+                        # 1.1s of source audio: leaves headroom for resampling and avoids the resampler's off-by-one
                         for i in range(int(22050 * 1.1))
                     )
                 )
@@ -101,7 +101,7 @@ def test_empty_synthesis_does_not_replace_cached_response(wakeup_runtime, tts_re
 
 
 def test_retained_file_skips_opus_roundtrip(wakeup_runtime, tmp_path, monkeypatch):
-    """保留文件路径必须直转 wav，不得经过 Opus 编解码。"""
+    """A retained file path must be converted straight to wav, without Opus encode/decode."""
     from core.utils import util
 
     helloHandle, wakeup_cache, LocalTTS = wakeup_runtime
