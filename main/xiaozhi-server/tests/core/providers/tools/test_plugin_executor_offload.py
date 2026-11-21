@@ -1,4 +1,4 @@
-"""服务端插件执行器：同步插件函数在线程池里跑，不卡事件循环；async 插件照常 await；异常变成 ERROR 响应。"""
+"""Server-side plugin executor: sync plugin functions run in a thread pool without blocking the event loop; async plugins are awaited as usual; exceptions become ERROR responses."""
 from __future__ import annotations
 
 import asyncio
@@ -19,20 +19,20 @@ def test_sync_plugin_runs_off_loop_and_async_plugin_is_awaited():
     conn = SimpleNamespace(config={})
 
     async def paced_sleep(delay):
-        # 不能用 asyncio.sleep 计时：conftest 在 mock 模式会把它换成不让出循环的桩，
-        # 这里放到线程池里睡，保证 ticker 每拍都真正让出事件循环。
+        # Cannot time with asyncio.sleep: in mock mode conftest replaces it with a stub that does not yield to the loop,
+        # so sleep in the thread pool here, making sure every tick really yields the event loop.
         await asyncio.get_running_loop().run_in_executor(None, time.sleep, delay)
 
     def slow_sync(conn_arg, entity_id):
-        time.sleep(0.3)  # 模拟阻塞 IO
-        return ActionResponse(Action.RESPONSE, None, f"{entity_id} 已打开")
+        time.sleep(0.3)  # simulate blocking IO
+        return ActionResponse(Action.RESPONSE, None, f"{entity_id} opened")
 
     async def fast_async(question):
         await asyncio.sleep(0)
-        return ActionResponse(Action.REQLLM, f"答：{question}", None)
+        return ActionResponse(Action.REQLLM, f"Answer: {question}", None)
 
     def boom(conn_arg):
-        raise RuntimeError("连不上")
+        raise RuntimeError("cannot connect")
 
     _register("t_slow_sync", slow_sync, ToolType.SYSTEM_CTL)
     _register("t_fast_async", fast_async, ToolType.WAIT)
@@ -50,12 +50,12 @@ def test_sync_plugin_runs_off_loop_and_async_plugin_is_awaited():
             t = asyncio.create_task(ticker())
             r = await ex.execute(conn, "t_slow_sync", {"entity_id": "light.living"})
             t.cancel()
-            assert r.action == Action.RESPONSE and r.response == "light.living 已打开"
-            assert len(ticks) >= 5                      # 300 ms 里事件循环一直在转（没被 time.sleep 卡住）
-            r2 = await ex.execute(conn, "t_fast_async", {"question": "几点"})
-            assert r2.action == Action.REQLLM and r2.result == "答：几点"
+            assert r.action == Action.RESPONSE and r.response == "light.living opened"
+            assert len(ticks) >= 5                      # the event loop kept running during the 300 ms (not blocked by time.sleep)
+            r2 = await ex.execute(conn, "t_fast_async", {"question": "what time"})
+            assert r2.action == Action.REQLLM and r2.result == "Answer: what time"
             r3 = await ex.execute(conn, "t_boom", {})
-            assert r3.action == Action.ERROR and "连不上" in r3.response
+            assert r3.action == Action.ERROR and "cannot connect" in r3.response
             r4 = await ex.execute(conn, "t_missing", {})
             assert r4.action == Action.NOTFOUND
         asyncio.run(go())
@@ -65,27 +65,27 @@ def test_sync_plugin_runs_off_loop_and_async_plugin_is_awaited():
 
 
 def test_conn_passing_rules_and_compat_branches():
-    """code 3/4/5 传 conn；WAIT/type=None 不传；同步函数返回协程会被兜底 await。"""
+    """code 3/4/5 pass conn; WAIT/type=None do not; a sync function returning a coroutine is awaited as a fallback."""
     conn = SimpleNamespace(config={})
     seen = {}
 
     def prompt_fn(conn_arg):
         seen["prompt"] = conn_arg
-        return ActionResponse(Action.RESPONSE, None, "切角色")
+        return ActionResponse(Action.RESPONSE, None, "switch role")
 
     def wait_fn():
         seen["wait"] = True
-        return ActionResponse(Action.RESPONSE, None, "等")
+        return ActionResponse(Action.RESPONSE, None, "wait")
 
     def no_type_fn():
         seen["no_type"] = True
-        return ActionResponse(Action.RESPONSE, None, "无类型")
+        return ActionResponse(Action.RESPONSE, None, "no type")
 
     def sync_returns_coro(conn_arg):
         seen["coro"] = conn_arg
 
         async def inner():
-            return ActionResponse(Action.RESPONSE, None, "协程兜底")
+            return ActionResponse(Action.RESPONSE, None, "coroutine fallback")
 
         return inner()
 
@@ -97,13 +97,13 @@ def test_conn_passing_rules_and_compat_branches():
         async def go():
             ex = ServerPluginExecutor(conn)
             r1 = await ex.execute(conn, "t_prompt", {})
-            assert seen["prompt"] is conn and r1.response == "切角色"
+            assert seen["prompt"] is conn and r1.response == "switch role"
             r2 = await ex.execute(conn, "t_wait", {})
-            assert "wait" in seen and r2.response == "等"
+            assert "wait" in seen and r2.response == "wait"
             r3 = await ex.execute(conn, "t_no_type", {})
-            assert "no_type" in seen and r3.response == "无类型"
+            assert "no_type" in seen and r3.response == "no type"
             r4 = await ex.execute(conn, "t_sync_coro", {})
-            assert seen["coro"] is conn and r4.response == "协程兜底"
+            assert seen["coro"] is conn and r4.response == "coroutine fallback"
         asyncio.run(go())
     finally:
         for n in ("t_prompt", "t_wait", "t_no_type", "t_sync_coro"):
@@ -111,7 +111,7 @@ def test_conn_passing_rules_and_compat_branches():
 
 
 def test_sync_plugin_uses_dedicated_pool():
-    """同步插件必须跑在专用池上，不能用 asyncio 默认池（DNS 解析等共用默认池）。"""
+    """Sync plugins must run on the dedicated pool, not the asyncio default pool (which DNS resolution etc. share)."""
     import threading
 
     conn = SimpleNamespace(config={})
@@ -129,6 +129,6 @@ def test_sync_plugin_uses_dedicated_pool():
             assert r.response == "ok"
 
         asyncio.run(go())
-        assert seen["thread"].startswith("plugin"), seen["thread"]  # 专用池线程名前缀
+        assert seen["thread"].startswith("plugin"), seen["thread"]  # thread name prefix of the dedicated pool
     finally:
         all_function_registry.pop("t_pool", None)

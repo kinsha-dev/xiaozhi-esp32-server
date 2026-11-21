@@ -535,14 +535,14 @@ async def test_cached_wakeup_does_not_talk_over_a_barge_in(tmp_path, monkeypatch
     conn = FakeConn()
     conn.config = {
         "enable_wakeup_words_response_cache": True,
-        "wakeup_words": ["你好小智"],
+        "wakeup_words": ["hivibi"],
         "enable_thinking_tone": False,
     }
     conn._feedback_turn_open = True
     conn.client_abort = True
     conn.dialogue = type("D", (), {"put": lambda *a, **k: None})()
 
-    assert await helloHandle.checkWakeupWords(conn, "你好小智") is True
+    assert await helloHandle.checkWakeupWords(conn, "hivibi") is True
     assert conn.client_abort is True
     assert sent == []
     assert conn.sentence_id == "sid"
@@ -567,12 +567,12 @@ async def test_cached_wakeup_plays_the_ack_before_the_greeting(tmp_path, monkeyp
     conn = FakeConn()
     conn.config = {
         "enable_wakeup_words_response_cache": True,
-        "wakeup_words": ["你好小智"],
+        "wakeup_words": ["hivibi"],
         "enable_thinking_tone": False,
     }
     conn.dialogue = type("D", (), {"put": lambda *a, **k: None})()
 
-    assert await helloHandle.checkWakeupWords(conn, "你好小智") is True
+    assert await helloHandle.checkWakeupWords(conn, "hivibi") is True
     await asyncio.sleep(0)  # the greeting's single stop is queued as a task; conftest sleep still yields
     kinds = [item[1] for item in sent if item[0] == "kind"]
     assert kinds[0] == "wake"
