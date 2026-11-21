@@ -110,7 +110,12 @@ def main():
             self.auto.state = ctl.auto_speak()
             self.animation = rumps.MenuItem("Voice animation", callback=self.on_animation)
             self.animation.state = ctl.voice_animation_enabled()
-            self.ctrl = rumps.MenuItem("Vibi Ctrl…  (⌃I or ⌃⌥I)", callback=lambda _: panel.open())
+            self.ctrl = rumps.MenuItem("Vibi Ctrl")  # same tabs as the Vibi Ctrl panel; each opens it on that tab
+            self.ctrl.add(rumps.MenuItem("Open  (⌃I or ⌃⌥I)", callback=lambda _: panel.open()))
+            self.ctrl.add(None)
+            for key, name in (("actions", "Actions"), ("commands", "Commands"), ("notes", "Notes"),
+                              ("board", "Message board"), ("components", "Components")):
+                self.ctrl.add(rumps.MenuItem(name, callback=lambda _, k=key: panel.open(k)))
             self.remote = rumps.MenuItem("Remote tunnel: off (click to start)", callback=self.on_remote)
             self.remote_copy = rumps.MenuItem("Copy remote link", callback=self.on_copy_remote)
             self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
