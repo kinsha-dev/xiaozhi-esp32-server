@@ -63,7 +63,9 @@ class CtrlPanel:
                 data = {"id": "", "to": "computer", "note": "Vibi will ask you out loud before anything risky."}
             elif path == "/api/chat" and method == "POST":
                 try:
-                    data = be.chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")))
+                    f = body.get("file")
+                    data = be.chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")),
+                                   f if isinstance(f, dict) else None)
                 except ValueError as e:
                     return 400, "application/json", json.dumps({"error": str(e)}).encode()
             elif path == "/api/components" and method == "GET":
@@ -158,6 +160,7 @@ class CtrlPanel:
     SEC_HEADERS = {"Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
                    "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}
     MAX_BODY = 65536
+    MAX_CHAT_BODY = 8 * 1024 * 1024  # /api/chat may carry one base64 file of up to 5 MB
 
     def named_host(self):
         """Stable hostname of a named Cloudflare tunnel (data/ctrl_tunnel_named.json {"name","hostname"}), if configured."""
@@ -271,7 +274,7 @@ class CtrlPanel:
                 body = None
                 if method == "POST":
                     n = int(self.headers.get("Content-Length") or 0)
-                    if n > panel.MAX_BODY:
+                    if n > (panel.MAX_CHAT_BODY if u.path == "/api/chat" else panel.MAX_BODY):
                         self.send_response(413)
                         self.send_header("Content-Length", "0")
                         self.send_header("Connection", "close")
