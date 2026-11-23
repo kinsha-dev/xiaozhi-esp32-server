@@ -127,3 +127,87 @@ def test_chat_computer_use_replays_a_voice_request(tmp_path):
     assert p.handle("POST", "/api/chat", {"t": p.token}, {"to": "computer", "text": "  "})[0] == 400
     busy = CtrlPanel(tmp_path, tmp_path, lambda text: False)
     assert busy.handle("POST", "/api/chat", {"t": busy.token}, {"to": "computer", "text": "x"})[0] == 409
+
+
+def _fake_voice_box(tmp_path, monkeypatch, answer):
+    """A voice-box repo next to data/ with stub gemini_ask + message_board modules."""
+    import base64  # noqa: F401
+    root = tmp_path / "vb"
+    (root / "server").mkdir(parents=True)
+    (root / "server" / "gemini_ask.py").write_text(
+        "NOT_SET_UP = 'Gemini is not set up.'\n"
+        "def gemini_key(d): return 'k'\n"
+        "def openrouter_key(d): return ''\n"
+        "def load_file(p):\n    p = str(p)\n    return (p.rsplit('/', 1)[-1], 'text/plain', open(p, 'rb').read())\n"
+        f"def answer(d, q, file=None):\n    {answer}\n")
+    (root / "server" / "message_board.py").write_text(
+        "import json\n"
+        "def post_message(text, data_dir, **kw):\n"
+        "    open(str(data_dir) + '/posted.json', 'w').write(json.dumps({'text': text, **kw}))\n")
+    data = root / "data"
+    data.mkdir()
+    return data
+
+
+def _wait_for(path):
+    import time
+    for _ in range(100):
+        if path.exists():
+            return
+        time.sleep(0.02)
+
+
+def test_chat_gemini_answers_in_background_and_posts_to_board(tmp_path):
+    import base64
+    import json
+    from mac_app import ctrl_backend as be
+
+    data = _fake_voice_box(tmp_path, None, "return ('42 ' + (file[2].decode() if file else ''), 'openrouter')")
+    out = be.chat(data, "gemini", "what is in this", {"name": "../notes.txt", "data": base64.b64encode(b"hello").decode()})
+    assert out["to"] == "gemini"
+    _wait_for(data / "posted.json")
+    row = json.loads((data / "posted.json").read_text())
+    assert (row["source"], row["channel"], row["direction"], row["status"]) == ("Gemini", "gemini", "to", "done")
+    assert "A: 42 hello (via OpenRouter)" in row["text"] and "[file: " in row["text"]
+    saved = list((data / "uploads").iterdir())
+    assert len(saved) == 1 and saved[0].name.endswith("-notes.txt") and saved[0].read_bytes() == b"hello"
+
+
+def test_chat_gemini_failure_is_posted_failed(tmp_path):
+    import json
+    from mac_app import ctrl_backend as be
+
+    data = _fake_voice_box(tmp_path, None, "raise RuntimeError('Gemini failed: HTTP 500')")
+    be.chat(data, "gemini", "hi")
+    _wait_for(data / "posted.json")
+    row = json.loads((data / "posted.json").read_text())
+    assert row["status"] == "failed" and "HTTP 500" in row["text"]
+
+
+def test_chat_gemini_without_voice_box_or_files_raises(tmp_path):
+    import base64
+    import pytest
+    from mac_app import ctrl_backend as be
+
+    with pytest.raises(ValueError, match="Gemini is not available"):
+        be.chat(tmp_path / "nowhere" / "data", "gemini", "hi")
+    data = _fake_voice_box(tmp_path, None, "return ('x', 'gemini')")
+    with pytest.raises(ValueError):
+        be.chat(data, "gemini", "hi", {"name": "a.txt", "data": "!!not base64!!"})
+    big = base64.b64encode(b"x" * (be.FILE_LIMIT + 1)).decode()
+    with pytest.raises(ValueError, match="too large"):
+        be.chat(data, "gemini", "hi", {"name": "a.bin", "data": big})
+
+
+def test_chat_file_path_is_added_for_claude_and_grok(tmp_path):
+    import base64
+    import json
+    from mac_app import ctrl_backend as be
+
+    f = {"name": "spec.pdf", "data": base64.b64encode(b"%PDF").decode()}
+    be.chat(tmp_path, "claude", "read this", dict(f))
+    row = json.loads((tmp_path / "to_claude.jsonl").read_text().splitlines()[0])
+    assert "[attached file: " in row["text"] and "spec.pdf" in row["text"]
+    out = be.chat(tmp_path, "grok", "read this", dict(f))
+    req = json.loads((tmp_path / "grok" / "requests" / f"{out['id']}.json").read_text())
+    assert req["file"].endswith("spec.pdf") and "[attached file: " in req["prompt"]
