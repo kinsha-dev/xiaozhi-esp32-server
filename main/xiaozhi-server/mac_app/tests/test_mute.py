@@ -104,3 +104,22 @@ def test_stealth_session_is_quiet_and_reply_goes_to_the_board(tmp_path):
     assert "You: what time is it" in row["text"] and "Vibi: It is noon." in row["text"]
     assert (row["source"], row["channel"], row["status"]) == ("Vibi", "typed", "done")
     ctl.stop()
+
+
+def test_listen_mode_is_exclusive(tmp_path):
+    import pytest
+
+    ctl, mics = make(tmp_path)
+    ctl.start()
+    assert ctl.listen_mode() == "active" and mics[0].running
+    ctl.set_listen_mode("stealth")
+    assert ctl.listen_mode() == "stealth" and not mics[0].running and (tmp_path / "stealth").exists() and not (tmp_path / "muted").exists()
+    ctl.set_listen_mode("mute")
+    assert ctl.listen_mode() == "mute" and not mics[0].running and (tmp_path / "muted").exists() and not (tmp_path / "stealth").exists()
+    ctl.set_listen_mode("stealth")
+    assert ctl.listen_mode() == "stealth" and not (tmp_path / "muted").exists() and not mics[0].running
+    ctl.set_listen_mode("active")
+    assert ctl.listen_mode() == "active" and mics[0].running and not (tmp_path / "stealth").exists()
+    with pytest.raises(ValueError):
+        ctl.set_listen_mode("loud")
+    ctl.stop()

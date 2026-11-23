@@ -99,10 +99,13 @@ def main():
         def __init__(self):
             super().__init__("vibi", title=ICONS["idle"], quit_button=None)
             self.status = rumps.MenuItem("Say “Hi bibi”")
-            self.mute = rumps.MenuItem("Mute (board and Mac)", callback=self.on_mute)
-            self.mute.state = ctl.muted
-            self.stealth = rumps.MenuItem("Stealth (animation and typed chat only)", callback=self.on_stealth)
-            self.stealth.state = ctl.stealth
+            self.modes = {m: rumps.MenuItem(t, callback=self.on_mode) for m, t in
+                          (("active", "Active (listen and speak)"), ("stealth", "Stealth (animation and typed chat only)"),
+                           ("mute", "Mute (board and Mac)"))}
+            self.mode_menu = rumps.MenuItem("Listen mode")
+            for it in self.modes.values():
+                self.mode_menu.add(it)
+            self._show_mode(ctl.listen_mode())
             self.retry = rumps.MenuItem("Retry microphone", callback=lambda _: ctl.retry_mic())
             self.login = rumps.MenuItem("Start at Login", callback=self.on_login)
             self.login.state = login_item_enabled()
@@ -130,7 +133,7 @@ def main():
                 self.ctrl.add(rumps.MenuItem(name, callback=lambda _, k=key: panel.open(k)))
             self.remote = rumps.MenuItem("Remote tunnel: off (click to start)", callback=self.on_remote)
             self.remote_copy = rumps.MenuItem("Copy remote link", callback=self.on_copy_remote)
-            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.stealth, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mode_menu, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -139,8 +142,7 @@ def main():
             self.title = ICONS.get(s, ICONS["idle"])
             tunnel.poll_cmd()
             self._show_remote()
-            self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
-            self.stealth.state = ctl.stealth
+            self._show_mode(ctl.listen_mode())  # follows a mode set from Vibi Ctrl or the CLI
             try:
                 busy = s == "idle" and cu_running()  # a computer-use run is working in the background
                 overlay.update(("working" if busy else s) if ctl.voice_animation_enabled() else "idle")  # "idle": hidden when disabled
@@ -188,13 +190,14 @@ def main():
             item.state = not item.state
             ctl.set_voice_animation(bool(item.state))
 
-        def on_mute(self, item):
-            item.state = not item.state
-            ctl.set_muted(bool(item.state))
+        def _show_mode(self, mode):
+            for m, it in self.modes.items():
+                it.state = m == mode
 
-        def on_stealth(self, item):
-            item.state = not item.state
-            ctl.set_stealth(bool(item.state))
+        def on_mode(self, item):
+            mode = next(m for m, it in self.modes.items() if it is item)
+            ctl.set_listen_mode(mode)
+            self._show_mode(mode)
 
         def on_remote(self, item):
             if tunnel.running():

@@ -111,6 +111,24 @@ class Controller:
     def _stealth_file(self):
         return self.cfg.data_dir / "stealth" if self.cfg.data_dir else None
 
+    def listen_mode(self) -> str:
+        """active (listening and speaking), stealth (animation and typed commands only) or mute (silent)."""
+        return "mute" if self.muted else "stealth" if self.stealth else "active"
+
+    def set_listen_mode(self, mode: str):
+        """One switch for the menu: exactly one of active / stealth / mute is on. No confirmation."""
+        if mode not in ("active", "stealth", "mute"):
+            raise ValueError("mode must be active, stealth or mute")
+        if mode == "mute":
+            self.set_stealth(False)  # clears the flag; the mic stays off through set_muted below
+            self.set_muted(True)
+        elif mode == "stealth":
+            self.set_muted(False)
+            self.set_stealth(True)
+        else:
+            self.set_stealth(False)
+            self.set_muted(False)
+
     def set_stealth(self, on: bool, write: bool = True):
         """Stealth: the mic is off (no wake word, no listening), nothing is read out, queued updates wait. A typed command from
         Vibi Ctrl still runs a session, silently: the animation shows, the reply goes to captions and the Message board."""
