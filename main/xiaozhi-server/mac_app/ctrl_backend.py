@@ -1,9 +1,12 @@
 """Vibi Ctrl data layer (no UI): history lists, component status, restart, rerun. Pure functions over data/ files."""
+import base64
+import binascii
 import fcntl
 import json
 import os
 import re
 import subprocess
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -61,22 +64,86 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
 
-CHAT_TARGETS = ("claude", "grok")
+CHAT_TARGETS = ("claude", "grok", "gemini")
 CHAT_LIMIT = 4000
+FILE_LIMIT = 5 * 1024 * 1024
 
 
-def chat(data_dir: Path, to: str, text: str) -> dict:
-    """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads) or to the Grok Bot
-    (a `task` request in data/grok/requests). Same file contracts the voice path uses, so replies show up on the board."""
+def _load_module(name: str, data_dir: Path, env: str, rel: str):
+    """A module of the voice box repo (next to the data dir), or None when it is not there."""
+    import importlib.util
+
+    mod_path = Path(os.environ.get(env) or Path(data_dir).parent / "server" / rel)
+    if not mod_path.exists():
+        return None
+    spec = importlib.util.spec_from_file_location(name, mod_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def save_upload(data_dir: Path, name: str, b64: str) -> Path:
+    """Store a file picked in the Message board under data/uploads/. Returns its path. ValueError if unusable."""
+    try:
+        raw = base64.b64decode(b64 or "", validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("bad file")
+    if not raw:
+        raise ValueError("empty file")
+    if len(raw) > FILE_LIMIT:
+        raise ValueError("file too large (5 MB max)")
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(str(name or "file")).name).strip("._") or "file"
+    dest = Path(data_dir) / "uploads" / f"{uuid.uuid4().hex[:6]}-{safe[:80]}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(raw)
+    return dest
+
+
+def _ask_gemini_async(data_dir: Path, ask_mod, board_mod, text: str, path):
+    """Answer on a thread (Gemini, OpenRouter if it fails) and file the result on the board."""
+    label = f"{text}\n[file: {Path(path).name}]" if path else text
+
+    def work():
+        try:
+            file = ask_mod.load_file(path) if path else None
+            answer, via = ask_mod.answer(Path(data_dir), text, file)
+            body, status = f"Q: {label}\n\nA: {answer}" + (" (via OpenRouter)" if via == "openrouter" else ""), "done"
+        except (RuntimeError, ValueError) as e:
+            body, status = f"Q: {label}\n\n{e}", "failed"
+        try:
+            board_mod.post_message(body, Path(data_dir), source="Gemini", channel="gemini", direction="to", status=status)
+        except (OSError, ValueError):
+            pass
+
+    threading.Thread(target=work, daemon=True, name="ctrl-gemini").start()
+
+
+def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
+    """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads), to the Grok Bot
+    (a `task` request in data/grok/requests) or to Gemini (answered in the background, OpenRouter if Gemini fails; the answer
+    is posted on the board). Same file contracts the voice path uses, so replies show up on the board. `file` is
+    {"name", "data": base64}: saved under data/uploads/ and attached (Gemini reads it; Claude and Grok get its path)."""
     to, text = (to or "").lower(), (text or "").strip()
     if to not in CHAT_TARGETS:
-        raise ValueError("to must be claude or grok")
+        raise ValueError("to must be claude, grok or gemini")
     if not text:
         raise ValueError("empty message")
     if len(text) > CHAT_LIMIT:
         raise ValueError("message too long")
     d, mid, now = Path(data_dir), uuid.uuid4().hex[:6], time.time()
     d.mkdir(parents=True, exist_ok=True)
+    path = save_upload(d, file.get("name"), file.get("data")) if file else None
+    if to == "gemini":
+        ask_mod = _load_module("vibi_gemini_ask", d, "VIBI_GEMINI_ASK", "gemini_ask.py")
+        board_mod = _load_module("vibi_message_board", d, "VIBI_MESSAGE_BOARD", "message_board.py")
+        if ask_mod is None or board_mod is None:
+            raise ValueError("Gemini is not available: update the voice note box repo")
+        if not (ask_mod.gemini_key(d) or ask_mod.openrouter_key(d)):
+            raise ValueError(ask_mod.NOT_SET_UP)
+        _ask_gemini_async(d, ask_mod, board_mod, text, path)
+        return {"id": mid, "to": to}
+    if path:
+        text += f"\n[attached file: {path}]"
     if to == "claude":
         row = {"id": mid, "ts": datetime.fromtimestamp(now).strftime("%Y-%m-%dT%H:%M:%S"), "text": text,
                "status": "new", "project": "voice box", "source": "Vibi Ctrl"}
@@ -90,7 +157,7 @@ def chat(data_dir: Path, to: str, text: str) -> dict:
         tmp = req / f".{mid}.tmp"
         tmp.write_text(json.dumps({"id": mid, "kind": "task", "url": "", "prompt": text,
                                    "created": datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S"),
-                                   "reason": "Vibi Ctrl chat"}))
+                                   "reason": "Vibi Ctrl chat", **({"file": str(path)} if path else {})}))
         tmp.replace(req / f"{mid}.json")
     return {"id": mid, "to": to}
 
