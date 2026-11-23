@@ -17,3 +17,12 @@ def test_mute_drops_board_audio_and_marks_probe(tmp_path, monkeypatch):
     assert board_link.probe_body().endswith(" muted")
     (tmp_path / "muted").unlink()
     assert not audio_device.board_muted(conn()) and board_link.probe_body() == "auto"
+
+
+def test_stealth_also_silences_the_board_but_not_the_mac_app(tmp_path, monkeypatch):
+    monkeypatch.setenv("VOICE_BOX_DATA", str(tmp_path))
+    (tmp_path / "stealth").write_text("1")
+    assert audio_device.board_muted(conn())
+    assert not audio_device.board_muted(conn("mac-app"))  # typed commands from the Mac app still work
+    (tmp_path / "stealth").unlink()
+    assert not audio_device.board_muted(conn())

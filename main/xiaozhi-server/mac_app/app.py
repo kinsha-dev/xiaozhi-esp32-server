@@ -23,7 +23,7 @@ from mac_app.controller import Controller
 
 __all__ = ["Controller", "main"]
 
-ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "error": "vb!", "offline": "X"}
+ICONS = {"idle": "vb", "connecting": "vb…", "listening": "vb●", "thinking": "vb…", "speaking": "vb♪", "muted": "vb⊘", "stealth": "vb◌", "error": "vb!", "offline": "X"}
 LABEL = "com.voicebox.macapp"
 PLIST = Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
 TEMPLATE = Path(__file__).with_name("com.voicebox.macapp.plist.template")
@@ -91,7 +91,7 @@ def main():
     from mac_app.ctrl_tunnel import Tunnel
 
     panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
-                      quit_app=lambda: rumps.quit_application(), set_muted=lambda on: ctl.set_muted(on))
+                      quit_app=lambda: rumps.quit_application(), set_muted=lambda on: ctl.set_muted(on), set_stealth=lambda on: ctl.set_stealth(on))
     tunnel = Tunnel(panel, ctl.cfg.data_dir)
     overlay = Overlay(lambda: 0.3 if ctl.mirroring else ctl._speaker.level(), lambda: 0.05 if ctl.mirroring else ctl.mic_level)
 
@@ -101,6 +101,8 @@ def main():
             self.status = rumps.MenuItem("Say “Hi bibi”")
             self.mute = rumps.MenuItem("Mute (board and Mac)", callback=self.on_mute)
             self.mute.state = ctl.muted
+            self.stealth = rumps.MenuItem("Stealth (animation and typed chat only)", callback=self.on_stealth)
+            self.stealth.state = ctl.stealth
             self.retry = rumps.MenuItem("Retry microphone", callback=lambda _: ctl.retry_mic())
             self.login = rumps.MenuItem("Start at Login", callback=self.on_login)
             self.login.state = login_item_enabled()
@@ -128,7 +130,7 @@ def main():
                 self.ctrl.add(rumps.MenuItem(name, callback=lambda _, k=key: panel.open(k)))
             self.remote = rumps.MenuItem("Remote tunnel: off (click to start)", callback=self.on_remote)
             self.remote_copy = rumps.MenuItem("Copy remote link", callback=self.on_copy_remote)
-            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mute, self.stealth, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -138,12 +140,13 @@ def main():
             tunnel.poll_cmd()
             self._show_remote()
             self.mute.state = ctl.muted  # follows a mute set from Vibi Ctrl or the CLI
+            self.stealth.state = ctl.stealth
             try:
                 busy = s == "idle" and cu_running()  # a computer-use run is working in the background
                 overlay.update(("working" if busy else s) if ctl.voice_animation_enabled() else "idle")  # "idle": hidden when disabled
             except Exception as e:  # never let the overlay break the menu bar
                 print(f"[overlay] {e}", flush=True)
-            self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
+            self.status.title = ctl.error if ctl.error else ("Board offline: no heartbeat for 5 min" if s == "offline" else "Stealth: type commands in Vibi Ctrl" if s == "stealth" else f"State: {s}" if s != "idle" else "Say “Hi bibi”")
 
         def _show_remote(self):
             on = tunnel.running()
@@ -188,6 +191,10 @@ def main():
         def on_mute(self, item):
             item.state = not item.state
             ctl.set_muted(bool(item.state))
+
+        def on_stealth(self, item):
+            item.state = not item.state
+            ctl.set_stealth(bool(item.state))
 
         def on_remote(self, item):
             if tunnel.running():

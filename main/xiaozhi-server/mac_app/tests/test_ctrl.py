@@ -1,4 +1,5 @@
 import json
+import json
 import time
 from pathlib import Path
 
@@ -211,3 +212,19 @@ def test_chat_file_path_is_added_for_claude_and_grok(tmp_path):
     out = be.chat(tmp_path, "grok", "read this", dict(f))
     req = json.loads((tmp_path / "grok" / "requests" / f"{out['id']}.json").read_text())
     assert req["file"].endswith("spec.pdf") and "[attached file: " in req["prompt"]
+
+
+def test_stealth_api_and_typed_vibi_command(tmp_path):
+    from mac_app.ctrl import CtrlPanel
+
+    sent, flips = [], []
+    p = CtrlPanel(tmp_path, tmp_path, lambda text: sent.append(text) or True, set_stealth=flips.append)
+    code, _, out = p.handle("POST", "/api/stealth", {"t": p.token}, {"on": True})
+    assert code == 200 and flips == [True]
+    (tmp_path / "stealth").write_text("1")
+    assert json.loads(p.handle("GET", "/api/stealth", {"t": p.token}, None)[2]) == {"on": True}
+    code, _, out = p.handle("POST", "/api/chat", {"t": p.token}, {"to": "vibi", "text": "  what time   is it "})
+    assert code == 200 and sent == ["what time is it"]
+    assert p.handle("POST", "/api/chat", {"t": p.token}, {"to": "vibi", "text": " "})[0] == 400
+    busy = CtrlPanel(tmp_path, tmp_path, lambda text: False)
+    assert busy.handle("POST", "/api/chat", {"t": busy.token}, {"to": "vibi", "text": "x"})[0] == 409

@@ -30,8 +30,8 @@ def mode() -> str:
 
 
 def muted() -> bool:
-    """True while the Mac app's Mute is on (data/muted exists): the board neither listens nor answers."""
-    return (_dir() / "muted").exists()
+    """True while the Mac app's Mute or Stealth mode is on (data/muted or data/stealth exists): the board neither listens nor answers."""
+    return (_dir() / "muted").exists() or (_dir() / "stealth").exists()
 
 
 def board_muted(conn) -> bool:

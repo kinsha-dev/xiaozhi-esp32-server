@@ -54,7 +54,7 @@ class Harness:
             task.cancel()
 
 
-async def run_session(script, idle_timeout=5.0, tail=0.3, feed=True, auto=False):
+async def run_session(script, idle_timeout=5.0, tail=0.3, feed=True, auto=False, quiet=False):
     h = Harness(script)
     states = []
     sp = FakeSpeaker()
@@ -62,6 +62,8 @@ async def run_session(script, idle_timeout=5.0, tail=0.3, feed=True, auto=False)
     async with serve(h.handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
         s = Session(f"ws://127.0.0.1:{port}/xiaozhi/v1/", q, sp, states.append, idle_timeout=idle_timeout, tail=tail)
+        s.quiet = quiet
+        h.session = s
 
         async def feeder():
             while True:
@@ -181,3 +183,22 @@ async def test_auto_session_keeps_listening_when_it_asked_a_question(monkeypatch
 
     h, states, _ = await run_session(script, feed=False, auto=True)
     assert "listening" in states
+
+
+async def test_quiet_session_drops_audio_never_listens_and_keeps_the_reply():
+    enc = OpusEncoder(24000)
+
+    async def script(ws, h):
+        await ws.send(tts("start"))
+        await ws.send(json.dumps({"type": "tts", "state": "sentence_start", "text": "Done."}))
+        await ws.send(enc.encode(bytes(2880)))
+        await asyncio.sleep(0.05)
+        await ws.send(tts("stop"))
+        await asyncio.sleep(0.2)
+
+    h, states, sp = await run_session(script, feed=True, quiet=True)
+    assert sp.played == []  # no audio out
+    assert "speaking" in states and "listening" not in states  # animation yes, listening no
+    assert h.session.reply == ["Done."]
+    assert not any(t.get("state") == "start" and t is not h.texts[1] for t in h.texts[2:] if t.get("type") == "listen")
+    assert h.binaries == []  # no mic frames sent

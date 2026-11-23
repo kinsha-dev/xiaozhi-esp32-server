@@ -31,6 +31,7 @@ class Controller:
         self._notify = notify
         self.state = "idle"
         self.muted = False
+        self.stealth = False  # no mic, no spoken replies; only the animation and typed commands (data/stealth)
         self.error = None
         self._active = False
         self._sess_q = None
@@ -69,10 +70,13 @@ class Controller:
         f = self._mute_file()
         if f is not None and f.exists():
             self.muted = True  # Mute survives a restart
+        sf = self._stealth_file()
+        if sf is not None and sf.exists():
+            self.stealth = True  # so does Stealth
         threading.Thread(target=self._run_loop, daemon=True).start()
         threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._watch_earphones, daemon=True).start()
-        if not self.muted:
+        if not self.muted and not self.stealth:
             self._start_mic()
 
     def stop(self):
@@ -92,7 +96,7 @@ class Controller:
         self._loop.run_forever()
 
     def _start_mic(self):
-        if self.device_mode() == "board":
+        if self.device_mode() == "board" or self.stealth:
             return
         try:
             self._mic.start()
@@ -102,6 +106,24 @@ class Controller:
 
     def retry_mic(self):
         if not self.muted:
+            self._start_mic()
+
+    def _stealth_file(self):
+        return self.cfg.data_dir / "stealth" if self.cfg.data_dir else None
+
+    def set_stealth(self, on: bool, write: bool = True):
+        """Stealth: the mic is off (no wake word, no listening), nothing is read out, queued updates wait. A typed command from
+        Vibi Ctrl still runs a session, silently: the animation shows, the reply goes to captions and the Message board."""
+        self.stealth = bool(on)
+        f = self._stealth_file()
+        if write and f is not None:
+            try:
+                f.write_text("1") if on else f.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if on:
+            self._mic.stop()
+        elif not self.muted:
             self._start_mic()
 
     def _mute_file(self):
@@ -117,6 +139,9 @@ class Controller:
         self._mute_sync = now
         if f.exists() != self.muted:
             self.set_muted(f.exists(), write=False)
+        sf = self._stealth_file()
+        if sf is not None and sf.exists() != self.stealth:
+            self.set_stealth(sf.exists(), write=False)
 
     def set_muted(self, muted: bool, write: bool = True):
         self.muted = muted
@@ -253,6 +278,8 @@ class Controller:
         self.sync_mute()
         if self.error:
             return "error"
+        if self.state == "idle" and self.stealth and not self.muted:
+            return "stealth"
         if self.device_mode() != "mac" and not self.board_alive() and not self.earphones_active:
             return "offline"
         if self.muted:
@@ -285,7 +312,7 @@ class Controller:
                 frame = self._frames.get(timeout=0.2)
             except queue.Empty:
                 continue
-            if self.muted or self._active or self.defer_to_board() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
+            if self.muted or self.stealth or self._active or self.defer_to_board() or self._speaker.is_busy() or time.monotonic() < self._mute_until:
                 if self._active or self._speaker.is_busy():
                     tones.stop()  # a chirp that already started must not keep playing over the reply
                 continue
@@ -350,9 +377,9 @@ class Controller:
     def on_pending(self):
         if self.defer_to_board():
             return  # the board speaks it
-        if self.muted:
-            self._notify("vibi has a message (muted)")
-            return  # mute is silence; the notification is the only signal
+        if self.muted or self.stealth:
+            self._notify("vibi has a message (" + ("muted" if self.muted else "stealth") + ")")
+            return  # mute and stealth are silence; the notification is the only signal
         if not self.auto_speak():
             now = time.monotonic()
             if not self._active and not self._speaker.is_busy() and now >= getattr(self, "_pending_tone_until", 0.0):
@@ -376,18 +403,34 @@ class Controller:
             tones.stop()  # a confused or pending chirp must not keep playing over the reply
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
-        self._sess_future = asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto), self._loop)
+        self._sess_future = asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto, quiet=self.stealth), self._loop)
         return True
 
-    async def _run_session(self, text, q, auto=False):
+    async def _run_session(self, text, q, auto=False, quiet=False):
+        session = None
         try:
             session = self._session_factory(q, self._set_state)
+            session.quiet = quiet  # Stealth: no audio out, no listening; the reply is filed on the board
             await (session.run(text, auto=True) if auto else session.run(text))
         finally:
+            if quiet:
+                self._file_typed_reply(text, getattr(session, "reply", None))
             self._mute_until = time.monotonic() + TAIL_S
             self._active = False
             self._sess_q = None
             self.state = "idle"
+
+    def _file_typed_reply(self, text, reply):
+        """Stealth: put a typed command and Vibi's text reply on the Message board (source Vibi, channel typed)."""
+        reply = " ".join(reply or []).strip() if isinstance(reply, list) else ""
+        try:
+            from mac_app import ctrl_backend as be
+            mod = be._load_module("vibi_message_board", self.cfg.data_dir, "VIBI_MESSAGE_BOARD", "message_board.py")
+            if mod is not None:
+                mod.post_message(f"You: {text}\n\nVibi: {reply or '(no reply)'}", self.cfg.data_dir, source="Vibi",
+                                 channel="typed", direction="to", status="done" if reply else "failed")
+        except Exception:  # the board is a log; a failure to file must never break the session
+            pass
 
     def _set_state(self, state: str):
         self.state = state

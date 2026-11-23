@@ -25,10 +25,11 @@ ALT_MODS = 0x1000 | 0x800  # Ctrl+Option, a fallback when Ctrl+I is taken or unr
 
 
 class CtrlPanel:
-    def __init__(self, data_dir, server_dir, rerun, quit_app=lambda: None, set_muted=None):
+    def __init__(self, data_dir, server_dir, rerun, quit_app=lambda: None, set_muted=None, set_stealth=None):
         """rerun(text) -> bool: replays `text` as a fresh voice turn (so the usual spoken confirmation applies)."""
         self.data_dir, self.server_dir, self._rerun, self._quit = Path(data_dir), Path(server_dir), rerun, quit_app
         self._set_muted = set_muted
+        self._set_stealth = set_stealth
         self.token = secrets.token_urlsafe(16)
         self.httpd = None
         self.port = None
@@ -53,6 +54,23 @@ class CtrlPanel:
                 except ValueError:
                     hours = 48
                 data = be.messages(self.data_dir, hours=hours)
+            elif path == "/api/stealth" and method == "GET":
+                data = {"on": (self.data_dir / "stealth").exists()}
+            elif path == "/api/stealth" and method == "POST":
+                on = bool(body.get("on"))
+                if self._set_stealth:
+                    self._set_stealth(on)
+                else:
+                    (self.data_dir / "stealth").write_text("1") if on else (self.data_dir / "stealth").unlink(missing_ok=True)
+                data = {"ok": True, "on": on}
+            elif path == "/api/chat" and method == "POST" and body.get("to") == "vibi":
+                text = " ".join(str(body.get("text", "")).split())
+                if not text or len(text) > be.CHAT_LIMIT:
+                    return 400, "application/json", b'{"error":"empty or too long"}'
+                # A typed command to Vibi itself: runs like a spoken one, silently in Stealth (reply lands on the board).
+                if not self._rerun(text):
+                    return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
+                data = {"id": "", "to": "vibi"}
             elif path == "/api/chat" and method == "POST" and body.get("to") == "computer":
                 text = " ".join(str(body.get("text", "")).split())
                 if not text or len(text) > be.CHAT_LIMIT:
