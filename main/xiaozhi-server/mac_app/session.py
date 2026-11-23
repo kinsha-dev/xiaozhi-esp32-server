@@ -39,6 +39,8 @@ class Session:
         self._listening_since = 0.0
         self._decoder = None
         self._auto = False
+        self.quiet = False  # Stealth: drop audio, never speak, never listen; the text reply is kept in `reply`
+        self.reply = []
 
     def _set(self, state: str):
         self._state = state
@@ -88,6 +90,8 @@ class Session:
     async def _receive(self, ws, sid):
         async for raw in ws:
             if isinstance(raw, bytes):
+                if self.quiet:
+                    continue
                 try:
                     self._speaker.play(self._decoder.decode(raw))
                 except (AudioError, Exception):
@@ -105,12 +109,15 @@ class Session:
                     captions.reset()  # a new reply: start its caption fresh
                 if ev.state == "sentence_start":
                     captions.set("vibi", ev.text, append=True)
-                if ev.state == "sentence_start" and hasattr(self._speaker, "speak"):
+                    self.reply.append(ev.text)
+                if ev.state == "sentence_start" and not self.quiet and hasattr(self._speaker, "speak"):
                     self._speaker.speak(ev.text)
                 if self._state != "speaking":
                     self._set("speaking")
             elif ev.kind == "tts" and ev.state == "stop":
                 captions.finish()
+                if self.quiet:
+                    return  # nothing was spoken, so nothing to wait for, and no listening in Stealth
                 while hasattr(self._speaker, "speak") and self._speaker.is_busy():
                     await asyncio.sleep(0.1)  # let `say` finish before we listen
                 self._mute_until = time.monotonic() + self._tail

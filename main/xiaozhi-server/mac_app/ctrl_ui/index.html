@@ -23,7 +23,7 @@ button.act:hover{border-color:var(--acc)}
 .empty{color:var(--mut);padding:24px;text-align:center}
 @media(max-width:600px){td.d{display:none}}
 </style></head><body>
-<header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
+<header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Message board."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
 const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["board","Message board"],["components","Components"]];
@@ -33,12 +33,12 @@ async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
 function nav(){$("#nav").innerHTML=TABS.map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
 function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
-function boardShell(){if(!$("#feed"))$("#main").innerHTML=`<form id="chat" onsubmit="sendChat(event)" style="display:flex;gap:8px;margin-bottom:12px"><select id="chatTo" class="act" style="font:inherit"><option value="claude">Claude</option><option value="grok">Grok Bot</option><option value="gemini">Gemini</option><option value="computer">Computer use</option></select><input id="chatText" autocomplete="off" placeholder="Message…" style="flex:1;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)"><label class="act" style="cursor:pointer;white-space:nowrap" title="Attach a file (5 MB max; not for Computer use)">📎 File<input id="chatFile" type="file" style="display:none" onchange="fileChosen()"></label><span id="chatFileName" class="meta"></span><button class="act">Send</button></form><div id="feed"></div>`;return $("#feed")}
+function boardShell(){if(!$("#feed"))$("#main").innerHTML=`<form id="chat" onsubmit="sendChat(event)" style="display:flex;gap:8px;margin-bottom:12px"><select id="chatTo" class="act" style="font:inherit"><option value="vibi">Vibi (typed command)</option><option value="claude">Claude</option><option value="grok">Grok Bot</option><option value="gemini">Gemini</option><option value="computer">Computer use</option></select><input id="chatText" autocomplete="off" placeholder="Message…" style="flex:1;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)"><label class="act" style="cursor:pointer;white-space:nowrap" title="Attach a file (5 MB max; not for Computer use)">📎 File<input id="chatFile" type="file" style="display:none" onchange="fileChosen()"></label><span id="chatFileName" class="meta"></span><button class="act">Send</button></form><div id="feed"></div>`;return $("#feed")}
 function fileChosen(){const f=$("#chatFile").files[0];$("#chatFileName").textContent=f?f.name:""}
 function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
 async function sendChat(e){e.preventDefault();const t=$("#chatText"),text=t.value.trim();if(!text)return;const to=$("#chatTo").value,f=$("#chatFile").files[0],body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
-  const r=await api("/api/chat",body);if(r.error){toast(r.error);return}t.value="";$("#chatFile").value="";fileChosen();toast(r.to=="computer"?"Computer use started. "+r.note:r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()}
+  const r=await api("/api/chat",body);if(r.error){toast(r.error);return}t.value="";$("#chatFile").value="";fileChosen();toast(r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()}
 async function load(){
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
@@ -53,7 +53,9 @@ async function load(){
 async function rerun(id,risky){if(risky&&!confirm("This is a risky kind of action. Vibi will speak the details and wait for your spoken yes before doing anything. Continue?"))return;const r=await api("/api/rerun",{kind:tab,id});toast(r.note||r.error)}
 async function mute(on){await api("/api/mute",{on});toast(on?"Muted: board and Mac are off":"Unmuted");load()}
 async function restart(k,n){if(!confirm("Restart "+n+"?"))return;const r=await api("/api/restart",{key:k});toast(r.ok?(r.note||n+" restarting"):"Failed: "+r.error);setTimeout(load,3000)}
+async function loadStealth(){const r=await api("/api/stealth");$("#stealth").checked=!!r.on}
+async function setStealth(on){const r=await api("/api/stealth",{on});toast(on?"Stealth on: no mic, no voice. Type commands in the Message board.":"Stealth off");$("#stealth").checked=!!r.on}
 async function loadStyle(){const s=await api("/api/style");$("#style").innerHTML=s.styles.map(x=>`<option ${x==s.style?"selected":""}>${x}</option>`).join("")}
 async function setStyle(v){const r=await api("/api/style",{style:v});toast("Voice style: "+r.style+(r.error?" ("+r.error+")":""))}
-nav();loadStyle();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
+nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
 </script></body></html>
