@@ -118,6 +118,43 @@ def _ask_gemini_async(data_dir: Path, ask_mod, board_mod, text: str, path):
     threading.Thread(target=work, daemon=True, name="ctrl-gemini").start()
 
 
+def _grok_webhook():
+    """(url, auth) for the Grok Bot's webhook: this process's environment, else the voice server's launchd job (the Mac app is
+    not started by launchd, so it does not inherit GROK_WEBHOOK_*). Never logged."""
+    url, auth = os.environ.get("GROK_WEBHOOK_URL", "").strip(), os.environ.get("GROK_WEBHOOK_AUTH", "").strip()
+    if not url:
+        try:
+            import plistlib
+            env = plistlib.loads((Path.home() / "Library/LaunchAgents/com.voicebox.server.plist").read_bytes())
+            env = env.get("EnvironmentVariables") or {}
+            url, auth = str(env.get("GROK_WEBHOOK_URL", "")).strip(), str(env.get("GROK_WEBHOOK_AUTH", "")).strip()
+        except Exception:
+            pass
+    return url, auth
+
+
+def _nudge_grok(mid: str) -> None:
+    """Wake the Grok Bot for request `mid` (it is nudged by webhook, not by polling): POST {"id","kind","url"} like the voice path."""
+    url, auth = _grok_webhook()
+    if not url:
+        return
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        headers["Authorization"] = auth if auth.lower().startswith("bearer ") else f"Bearer {auth}"
+
+    def post():
+        import ssl, urllib.request
+        try:  # the python.org build has no root certificates of its own: use macOS's bundle
+            ctx = ssl.create_default_context(cafile="/etc/ssl/cert.pem") if os.path.exists("/etc/ssl/cert.pem") else None
+            urllib.request.urlopen(urllib.request.Request(
+                url, data=json.dumps({"id": mid, "kind": "task", "url": ""}).encode(), headers=headers, method="POST"),
+                timeout=10, context=ctx).close()
+        except Exception:
+            pass  # the request file is still there for the bot to poll
+
+    threading.Thread(target=post, daemon=True, name="grok-nudge").start()
+
+
 def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
     """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads), to the Grok Bot
     (a `task` request in data/grok/requests) or to Gemini (answered in the background, OpenRouter if Gemini fails; the answer
@@ -159,6 +196,7 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
                                    "created": datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S"),
                                    "reason": "Vibi Ctrl chat", **({"file": str(path)} if path else {})}))
         tmp.replace(req / f"{mid}.json")
+        _nudge_grok(mid)
     return {"id": mid, "to": to}
 
 
