@@ -10,6 +10,8 @@ h1{font-size:16px;margin:0 12px 0 0}nav{display:flex;gap:4px;flex-wrap:wrap}
 nav button{border:0;background:none;color:var(--mut);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer}
 nav button.on{background:var(--card);color:var(--fg);font-weight:600}
 main{padding:16px 20px;max-width:980px;margin:auto}
+body.chat{height:100dvh;display:flex;flex-direction:column;overflow:hidden}body.chat header{position:static}body.chat main{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding-bottom:10px}
+#chatHost{flex:1;min-height:0}#chatHost>div{height:100%}#chatHost>div>div:last-child{padding-top:10px;border-top:1px solid var(--line)}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:12px}td.t{white-space:nowrap;color:var(--mut)}td.d{color:var(--mut);font-size:12px;word-break:break-word}
 .pill{padding:1px 8px;border-radius:99px;font-size:12px;background:var(--card)}.ok{color:var(--ok)}.error,.bad{color:var(--bad)}.warn{color:var(--warn)}
@@ -21,25 +23,92 @@ button.act:hover{border-color:var(--acc)}
 .err{color:var(--bad);font-size:12px;margin-top:6px;word-break:break-word}.meta{color:var(--mut);font-size:12px}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:10px;display:none}
 .empty{color:var(--mut);padding:24px;text-align:center}
+.chatfeed{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px;flex:1;min-height:0;overflow-y:auto}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
+.bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
 @media(max-width:600px){td.d{display:none}}
 </style></head><body>
-<header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Message board."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
+<header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
-const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["board","Message board"],["components","Components"]];
+const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["chat","Chat"],["board","Message board"],["components","Components"]];
 let tab=(TABS.find(x=>x[0]==location.hash.slice(1))||[])[0]||localStorage.getItem("vctrlTab")||"actions",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
 function nav(){$("#nav").innerHTML=TABS.map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
 function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
-function boardShell(){if(!$("#feed"))$("#main").innerHTML=`<form id="chat" onsubmit="sendChat(event)" style="display:flex;gap:8px;margin-bottom:12px"><select id="chatTo" class="act" style="font:inherit"><option value="vibi">Vibi (typed command)</option><option value="claude">Claude</option><option value="grok">Grok Bot</option><option value="gemini">Gemini</option><option value="computer">Computer use</option></select><input id="chatText" autocomplete="off" placeholder="Message…" style="flex:1;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)"><label class="act" style="cursor:pointer;white-space:nowrap" title="Attach a file (5 MB max; not for Computer use)">📎 File<input id="chatFile" type="file" style="display:none" onchange="fileChosen()"></label><span id="chatFileName" class="meta"></span><button class="act">Send</button></form><div id="feed"></div>`;return $("#feed")}
-function fileChosen(){const f=$("#chatFile").files[0];$("#chatFileName").textContent=f?f.name:""}
+function boardShell(){if(!$("#feed"))$("#main").innerHTML='<div id="feed"></div>';return $("#feed")}
 function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
-async function sendChat(e){e.preventDefault();const t=$("#chatText"),text=t.value.trim();if(!text)return;const to=$("#chatTo").value,f=$("#chatFile").files[0],body={to,text};
+
+/* ---- Chat tab: an A2UI v1.0 surface (https://a2ui.org). The "agent" side below emits createSurface / updateDataModel messages
+   (flat component list, @path bindings, event actions, list template); A2ui renders them with this page's own components.
+   Catalog: the basic catalog (Column, Row, List, Text, TextField, ChoicePicker, Button) plus one custom component, ChatBubble. ---- */
+const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
+ {id:"root",component:"Column",children:["feed","form"]},
+ {id:"form",component:"Row",align:"end",children:["to","text","fileBtn","fileName","send"]},
+ {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"}]},
+ {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
+ {id:"fileBtn",component:"Button",child:"fileLbl",action:{event:{name:"pick_file"}}},
+ {id:"fileLbl",component:"Text",text:"📎 File"},
+ {id:"fileName",component:"Text",variant:"caption",text:{"@path":"/chat/fileName"}},
+ {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
+ {id:"sendLbl",component:"Text",text:"Send"},
+ {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
+ {id:"bubble",component:"ChatBubble",meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"}}],
+ dataModel:{chat:{to:["claude"],text:"",fileName:""},messages:[]}}};
+const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini"};
+function chatMessagesUpdate(m){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
+  for(const r of m.filter(r=>CHAT_NAMES[r.source]).slice().reverse()){const who=CHAT_NAMES[r.source],body=r.body||r.summary||"",bad=r.status=="failed"?"error":"reply";
+    if(r.source=="Gemini"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
+      if(q){out.push({meta:`You → Gemini · ${r.time}`,text:q[1],variant:"me"},{meta:`Gemini · ${r.time}`,text:q[2],variant:bad});continue}}
+    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad})}
+  if(!out.length)out.push({meta:"",text:"No conversation yet. Pick Claude, Grok or Gemini above and send a message.",variant:"note"});
+  return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
+const A2ui={surfaces:{},onEvent:null,
+ process(msg){const c=msg.createSurface;if(c){this.surfaces[c.surfaceId]={comps:Object.fromEntries(c.components.map(x=>[x.id,x])),data:c.dataModel||{},watch:[]};return}
+  const u=msg.updateDataModel;if(u){const sf=this.surfaces[u.surfaceId];this.set(sf,u.path,u.value);sf.watch.forEach(f=>f())}},
+ get(sf,path,scope){const parts=((path[0]=="/"?"":(scope||"")+"/")+path).split("/").filter(Boolean);let v=sf.data;for(const k of parts){if(v==null)return;v=v[k]}return v},
+ set(sf,path,val){const parts=path.split("/").filter(Boolean);let o=sf.data;for(const k of parts.slice(0,-1))o=o[k]??={};parts.length?o[parts.at(-1)]=val:sf.data=val},
+ val(sf,x,scope){return x&&typeof x=="object"&&!Array.isArray(x)&&"@path" in x?this.get(sf,x["@path"],scope):x},
+ mount(id,host){const sf=this.surfaces[id];host.replaceChildren(this.node(sf,"root",""));return sf},
+ node(sf,cid,scope){const c=sf.comps[cid],me=this,v=x=>me.val(sf,x,scope),el=document.createElement("div");
+  const bind=f=>{f();sf.watch.push(f)},kids=()=>(c.children||[]).map(k=>me.node(sf,k,scope));
+  if(c.weight)el.style.flex=c.weight;
+  switch(c.component){
+   case"Column":case"Row":el.style.cssText+=`display:flex;gap:8px;flex-direction:${c.component=="Row"?"row":"column"}${c.align=="center"?";align-items:center":c.align=="end"?";align-items:flex-end;flex-wrap:wrap":""}`;el.append(...kids());break;
+   case"List":{el.className="chatfeed";let last,own=[];const t=c.children,draw=()=>{const items=me.get(sf,t.path)||[],j=JSON.stringify(items);if(j==last)return;last=j;
+      const atEnd=el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
+      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length;el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));own=sf.watch.slice(n);if(first||atEnd||me.stick){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
+   case"Text":bind(()=>{el.textContent=v(c.text)??"";el.className=c.variant=="caption"?"meta":""});break;
+   case"ChatBubble":bind(()=>{const k=v(c.variant);el.className="bub "+(k=="me"?"me":k=="error"?"bad":k=="note"?"note":"");
+      el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+esc(v(c.text))});break;
+   case"TextField":{const long=c.variant=="longText",i=document.createElement(long?"textarea":"input");if(long)i.rows=1;i.autocomplete="off";i.placeholder=v(c.placeholder)||"";i.setAttribute("aria-label",v(c.label)||"");
+      i.style.cssText="width:100%;min-width:180px;resize:none;max-height:120px;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)";
+      const fit=()=>{if(long){i.style.height="auto";i.style.height=Math.min(i.scrollHeight,120)+"px"}};i.oninput=()=>{me.set(sf,c.value["@path"],i.value);fit()};i.onkeydown=e=>{if(e.key=="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();sf.comps.send&&me.fire(sf,"send",scope)}};
+      bind(()=>{const x=v(c.value)??"";if(i.value!==x){i.value=x;fit()}});el.append(i);break}
+   case"ChoicePicker":{const s=document.createElement("select");s.className="act";s.style.font="inherit";s.setAttribute("aria-label",v(c.label)||"");
+      s.innerHTML=c.options.map(o=>`<option value="${esc(o.value)}">${esc(v(o.label))}</option>`).join("");
+      s.onchange=()=>me.set(sf,c.value["@path"],[s.value]);bind(()=>{s.value=(v(c.value)||[])[0]??""});el.append(s);break}
+   case"Button":{const b=document.createElement("button");b.className="act"+(c.variant=="primary"?" pri":"");b.type="button";b.append(me.node(sf,c.child,scope).firstChild||"");
+      b.onclick=()=>me.fire(sf,cid,scope);el.append(b);break}}
+  return el.style.cssText||el.className||el.childNodes.length?el:el},
+ fire(sf,cid,scope){const ev=sf.comps[cid].action.event,ctx={};for(const[k,x]of Object.entries(ev.context||{}))ctx[k]=this.val(sf,x,scope);this.onEvent&&this.onEvent(ev.name,ctx,sf)}};
+function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
+const chatFile=Object.assign(document.createElement("input"),{type:"file",style:"display:none"});
+chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",chatFile.files[0]?.name||"");sf.watch.forEach(f=>f())};
+A2ui.onEvent=async(name,ctx,sf)=>{
+  if(name=="pick_file"){chatFile.click();return}
+  if(name!="send_chat")return;
+  const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
-  const r=await api("/api/chat",body);if(r.error){toast(r.error);return}t.value="";$("#chatFile").value="";fileChosen();toast(r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()}
+  const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
+  A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";sf.watch.forEach(f=>f());
+  toast(r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
+async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.mount("chat",$("#chatHost"))}
+  A2ui.process(chatMessagesUpdate(await api("/api/messages?hours=72")))}
 async function load(){
+  document.body.classList.toggle("chat",tab=="chat");
+  if(tab=="chat")return loadChat();
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
   if(tab=="board"){const all=window.boardAll||false,m=await api("/api/messages?hours="+(all?0:48)),bar=`<p class="meta">${all?"All messages":"Last 48 hours"} · <a href="#" onclick="boardAll=!boardAll;load();return false">${all?"Show last 48 hours":"Show all"}</a></p>`;
@@ -54,7 +123,7 @@ async function rerun(id,risky){if(risky&&!confirm("This is a risky kind of actio
 async function mute(on){await api("/api/mute",{on});toast(on?"Muted: board and Mac are off":"Unmuted");load()}
 async function restart(k,n){if(!confirm("Restart "+n+"?"))return;const r=await api("/api/restart",{key:k});toast(r.ok?(r.note||n+" restarting"):"Failed: "+r.error);setTimeout(load,3000)}
 async function loadStealth(){const r=await api("/api/stealth");$("#stealth").checked=!!r.on}
-async function setStealth(on){const r=await api("/api/stealth",{on});toast(on?"Stealth on: no mic, no voice. Type commands in the Message board.":"Stealth off");$("#stealth").checked=!!r.on}
+async function setStealth(on){const r=await api("/api/stealth",{on});toast(on?"Stealth on: no mic, no voice. Type commands in the Chat tab.":"Stealth off");$("#stealth").checked=!!r.on}
 async function loadStyle(){const s=await api("/api/style");$("#style").innerHTML=s.styles.map(x=>`<option ${x==s.style?"selected":""}>${x}</option>`).join("")}
 async function setStyle(v){const r=await api("/api/style",{style:v});toast("Voice style: "+r.style+(r.error?" ("+r.error+")":""))}
 nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
