@@ -4,6 +4,7 @@ import math
 import uuid
 import queue
 import asyncio
+import concurrent.futures
 import threading
 import traceback
 
@@ -467,8 +468,11 @@ class TTSProviderBase(ABC):
                 if self.conn.max_output_size > 0 and text:
                     add_device_output(self.conn.headers.get("device-id"), len(text))
 
+            except (asyncio.CancelledError, concurrent.futures.CancelledError):
+                # the connection's event loop was torn down mid-send (client left or server restarting)
+                logger.bind(tag=TAG).debug("audio send cancelled: connection closed")
             except Exception as e:
-                logger.bind(tag=TAG).error(f"audio_play_priority_thread: {text} {e}")
+                logger.bind(tag=TAG).error(f"audio_play_priority_thread: {text} {type(e).__name__}: {e}")
 
     async def start_session(self, session_id):
         pass
