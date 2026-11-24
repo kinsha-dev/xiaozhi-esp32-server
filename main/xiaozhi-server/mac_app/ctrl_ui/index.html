@@ -10,6 +10,8 @@ h1{font-size:16px;margin:0 12px 0 0}nav{display:flex;gap:4px;flex-wrap:wrap}
 nav button{border:0;background:none;color:var(--mut);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer}
 nav button.on{background:var(--card);color:var(--fg);font-weight:600}
 main{padding:16px 20px;max-width:980px;margin:auto}
+body.chat{height:100dvh;display:flex;flex-direction:column;overflow:hidden}body.chat header{position:static}body.chat main{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding-bottom:10px}
+#chatHost{flex:1;min-height:0}#chatHost>div{height:100%}#chatHost>div>div:last-child{padding-top:10px;border-top:1px solid var(--line)}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:12px}td.t{white-space:nowrap;color:var(--mut)}td.d{color:var(--mut);font-size:12px;word-break:break-word}
 .pill{padding:1px 8px;border-radius:99px;font-size:12px;background:var(--card)}.ok{color:var(--ok)}.error,.bad{color:var(--bad)}.warn{color:var(--warn)}
@@ -21,7 +23,7 @@ button.act:hover{border-color:var(--acc)}
 .err{color:var(--bad);font-size:12px;margin-top:6px;word-break:break-word}.meta{color:var(--mut);font-size:12px}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:10px;display:none}
 .empty{color:var(--mut);padding:24px;text-align:center}
-.chatfeed{display:flex;flex-direction:column;gap:10px;padding:4px 0 24px}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
+.chatfeed{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px;flex:1;min-height:0;overflow-y:auto}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
 .bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
 @media(max-width:600px){td.d{display:none}}
 </style></head><body>
@@ -42,10 +44,10 @@ function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onl
    (flat component list, @path bindings, event actions, list template); A2ui renders them with this page's own components.
    Catalog: the basic catalog (Column, Row, List, Text, TextField, ChoicePicker, Button) plus one custom component, ChatBubble. ---- */
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
- {id:"root",component:"Column",children:["form","feed"]},
- {id:"form",component:"Row",align:"center",children:["to","text","fileBtn","fileName","send"]},
+ {id:"root",component:"Column",children:["feed","form"]},
+ {id:"form",component:"Row",align:"end",children:["to","text","fileBtn","fileName","send"]},
  {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"}]},
- {id:"text",component:"TextField",label:"Message",placeholder:"Message…",value:{"@path":"/chat/text"},weight:1},
+ {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
  {id:"fileBtn",component:"Button",child:"fileLbl",action:{event:{name:"pick_file"}}},
  {id:"fileLbl",component:"Text",text:"📎 File"},
  {id:"fileName",component:"Text",variant:"caption",text:{"@path":"/chat/fileName"}},
@@ -73,17 +75,17 @@ const A2ui={surfaces:{},onEvent:null,
   const bind=f=>{f();sf.watch.push(f)},kids=()=>(c.children||[]).map(k=>me.node(sf,k,scope));
   if(c.weight)el.style.flex=c.weight;
   switch(c.component){
-   case"Column":case"Row":el.style.cssText+=`display:flex;gap:8px;flex-direction:${c.component=="Row"?"row":"column"}${c.align=="center"?";align-items:center":""}`;el.append(...kids());break;
+   case"Column":case"Row":el.style.cssText+=`display:flex;gap:8px;flex-direction:${c.component=="Row"?"row":"column"}${c.align=="center"?";align-items:center":c.align=="end"?";align-items:flex-end;flex-wrap:wrap":""}`;el.append(...kids());break;
    case"List":{el.className="chatfeed";let last,own=[];const t=c.children,draw=()=>{const items=me.get(sf,t.path)||[],j=JSON.stringify(items);if(j==last)return;last=j;
-      const atEnd=window.innerHeight+window.scrollY>=document.body.scrollHeight-80,first=!el.dataset.n;el.dataset.n=1;
-      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length;el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));own=sf.watch.slice(n);if(first||atEnd)window.scrollTo(0,document.body.scrollHeight)};bind(draw);break}
+      const atEnd=el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
+      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length;el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));own=sf.watch.slice(n);if(first||atEnd||me.stick){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
    case"Text":bind(()=>{el.textContent=v(c.text)??"";el.className=c.variant=="caption"?"meta":""});break;
    case"ChatBubble":bind(()=>{const k=v(c.variant);el.className="bub "+(k=="me"?"me":k=="error"?"bad":k=="note"?"note":"");
       el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+esc(v(c.text))});break;
-   case"TextField":{const i=document.createElement("input");i.autocomplete="off";i.placeholder=v(c.placeholder)||"";i.setAttribute("aria-label",v(c.label)||"");
-      i.style.cssText="width:100%;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)";
-      i.oninput=()=>me.set(sf,c.value["@path"],i.value);i.onkeydown=e=>{if(e.key=="Enter"&&!e.isComposing)sf.comps.send&&me.fire(sf,"send",scope)};
-      bind(()=>{const x=v(c.value)??"";if(i.value!==x)i.value=x});el.append(i);break}
+   case"TextField":{const long=c.variant=="longText",i=document.createElement(long?"textarea":"input");if(long)i.rows=1;i.autocomplete="off";i.placeholder=v(c.placeholder)||"";i.setAttribute("aria-label",v(c.label)||"");
+      i.style.cssText="width:100%;min-width:180px;resize:none;max-height:120px;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)";
+      const fit=()=>{if(long){i.style.height="auto";i.style.height=Math.min(i.scrollHeight,120)+"px"}};i.oninput=()=>{me.set(sf,c.value["@path"],i.value);fit()};i.onkeydown=e=>{if(e.key=="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();sf.comps.send&&me.fire(sf,"send",scope)}};
+      bind(()=>{const x=v(c.value)??"";if(i.value!==x){i.value=x;fit()}});el.append(i);break}
    case"ChoicePicker":{const s=document.createElement("select");s.className="act";s.style.font="inherit";s.setAttribute("aria-label",v(c.label)||"");
       s.innerHTML=c.options.map(o=>`<option value="${esc(o.value)}">${esc(v(o.label))}</option>`).join("");
       s.onchange=()=>me.set(sf,c.value["@path"],[s.value]);bind(()=>{s.value=(v(c.value)||[])[0]??""});el.append(s);break}
@@ -100,11 +102,12 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
-  A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";sf.watch.forEach(f=>f());
+  A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";sf.watch.forEach(f=>f());
   toast(r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.mount("chat",$("#chatHost"))}
   A2ui.process(chatMessagesUpdate(await api("/api/messages?hours=72")))}
 async function load(){
+  document.body.classList.toggle("chat",tab=="chat");
   if(tab=="chat")return loadChat();
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
