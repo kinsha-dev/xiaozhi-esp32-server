@@ -228,3 +228,18 @@ def test_stealth_api_and_typed_vibi_command(tmp_path):
     assert p.handle("POST", "/api/chat", {"t": p.token}, {"to": "vibi", "text": " "})[0] == 400
     busy = CtrlPanel(tmp_path, tmp_path, lambda text: False)
     assert busy.handle("POST", "/api/chat", {"t": busy.token}, {"to": "vibi", "text": "x"})[0] == 409
+
+
+def test_messages_pass_rich_fields_through_and_text_only_rows_stay_plain(tmp_path):
+    server = tmp_path / "server"
+    server.mkdir()
+    (server / "message_board.py").write_text(
+        "def messages(data_dir, source=None):\n"
+        "    return [{'id':'1','source':'Grok Bot','channel':'handoff','direction':'to','ts':2,'time':'t','status':'done','summary':'s','body':'b','pair_id':'',"
+        "'ui':{'components':[{'id':'root','component':'Text','text':'x'}],'dataModel':{}},'images':['https://x/y.png'],'links':[{'url':'https://x','title':'x'}]},"
+        "{'id':'2','source':'Claude','channel':'inbox','direction':'from','ts':1,'time':'t','status':'new','summary':'w','body':'w','pair_id':''}]\n")
+    data = tmp_path / "data"
+    data.mkdir()
+    rich, plain = be.messages(data, hours=0)
+    assert rich["ui"]["components"][0]["id"] == "root" and rich["images"] == ["https://x/y.png"] and rich["links"][0]["url"] == "https://x"
+    assert not {"ui", "images", "links"} & set(plain)

@@ -24,7 +24,9 @@ button.act:hover{border-color:var(--acc)}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:10px;display:none}
 .empty{color:var(--mut);padding:24px;text-align:center}
 .chatfeed{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px;flex:1;min-height:0;overflow-y:auto}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
-.bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
+.bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.rich{margin-top:8px;white-space:normal}.rcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.rimg{height:28px;max-width:100%;border-radius:6px;object-fit:contain}.rimgs{display:flex;flex-wrap:wrap;gap:6px}.rimgs img{max-height:180px;max-width:100%;border-radius:8px}
+.rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
+.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
 @media(max-width:600px){td.d{display:none}}
 </style></head><body>
 <header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
@@ -54,16 +56,27 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"}}],
+ {id:"bubble",component:"ChatBubble",meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},messages:[]}}};
-const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini"};
+const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 function chatMessagesUpdate(m){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
   for(const r of m.filter(r=>CHAT_NAMES[r.source]).slice().reverse()){const who=CHAT_NAMES[r.source],body=r.body||r.summary||"",bad=r.status=="failed"?"error":"reply";
     if(r.source=="Gemini"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
       if(q){out.push({meta:`You → Gemini · ${r.time}`,text:q[1],variant:"me"},{meta:`Gemini · ${r.time}`,text:q[2],variant:bad});continue}}
-    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad})}
+    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
   if(!out.length)out.push({meta:"",text:"No conversation yet. Pick Claude, Grok or Gemini above and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
+/* Rich answers: an optional A2UI surface (`ui`) from the bot is untrusted. It is cut down again here (whitelisted components,
+   http(s) URLs only, Button events limited to reply / open_url) and drawn with the same renderer; unknown components become Text. */
+const RICH_OK=new Set(["Column","Row","List","Card","Tabs","Divider","Text","Image","Icon","Button","Badge"]),httpUrl=u=>typeof u=="string"&&/^https?:\/\/\S+$/i.test(u)&&u.length<2048?u:"";
+function cleanRich(r,to){if(!r||typeof r!="object"||!Array.isArray(r.components))return null;const comps={};
+  for(const x of r.components.slice(0,200)){if(!x||typeof x!="object"||typeof x.id!="string")continue;let c={...x};
+    if(!RICH_OK.has(c.component))c={id:c.id,component:"Text",text:[c.text,c.label,c.title,c.description].find(t=>typeof t=="string")||""};
+    if(c.component=="Image"&&typeof c.url=="string")c.url=httpUrl(c.url);
+    if(c.component=="Button"){const e=c.action&&c.action.event,ok=e&&((e.name=="reply"&&typeof e.context?.text=="string"&&e.context.text.trim())||(e.name=="open_url"&&httpUrl(e.context?.url)));if(!ok)c={id:c.id,component:"Card",child:c.child}}
+    comps[c.id]=c}
+  if(!comps.root)return null;let data={};try{data=JSON.parse(JSON.stringify(r.dataModel&&typeof r.dataModel=="object"?r.dataModel:{}))}catch(e){}
+  return{comps,data,watch:[],to:["claude","grok","gemini"].includes(to)?to:"grok"}}
 const A2ui={surfaces:{},onEvent:null,
  process(msg){const c=msg.createSurface;if(c){this.surfaces[c.surfaceId]={comps:Object.fromEntries(c.components.map(x=>[x.id,x])),data:c.dataModel||{},watch:[]};return}
   const u=msg.updateDataModel;if(u){const sf=this.surfaces[u.surfaceId];this.set(sf,u.path,u.value);sf.watch.forEach(f=>f())}},
@@ -71,17 +84,30 @@ const A2ui={surfaces:{},onEvent:null,
  set(sf,path,val){const parts=path.split("/").filter(Boolean);let o=sf.data;for(const k of parts.slice(0,-1))o=o[k]??={};parts.length?o[parts.at(-1)]=val:sf.data=val},
  val(sf,x,scope){return x&&typeof x=="object"&&!Array.isArray(x)&&"@path" in x?this.get(sf,x["@path"],scope):x},
  mount(id,host){const sf=this.surfaces[id];host.replaceChildren(this.node(sf,"root",""));return sf},
- node(sf,cid,scope){const c=sf.comps[cid],me=this,v=x=>me.val(sf,x,scope),el=document.createElement("div");
-  const bind=f=>{f();sf.watch.push(f)},kids=()=>(c.children||[]).map(k=>me.node(sf,k,scope));
+ node(sf,cid,scope){if((sf.depth=(sf.depth||0)+1)>12||!sf.comps[cid]){sf.depth--;return document.createElement("span")}try{return this.node0(sf,cid,scope)}finally{sf.depth--}},
+ node0(sf,cid,scope){const c=sf.comps[cid],me=this,v=x=>me.val(sf,x,scope),el=document.createElement("div");
+  const bind=f=>{f();sf.watch.push(f)},kids=()=>(Array.isArray(c.children)?c.children:[]).filter(k=>typeof k=="string").map(k=>me.node(sf,k,scope));
   if(c.weight)el.style.flex=c.weight;
   switch(c.component){
    case"Column":case"Row":el.style.cssText+=`display:flex;gap:8px;flex-direction:${c.component=="Row"?"row":"column"}${c.align=="center"?";align-items:center":c.align=="end"?";align-items:flex-end;flex-wrap:wrap":""}`;el.append(...kids());break;
-   case"List":{el.className="chatfeed";let last,own=[];const t=c.children,draw=()=>{const items=me.get(sf,t.path)||[],j=JSON.stringify(items);if(j==last)return;last=j;
-      const atEnd=el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
-      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length;el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));own=sf.watch.slice(n);if(first||atEnd||me.stick){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
+   case"List":{const isFeed=sf===me.surfaces.chat&&cid=="feed";el.className=isFeed?"chatfeed":"rlist";let last,own=[];const t=c.children,draw=()=>{const items=me.get(sf,t.path)||[],j=JSON.stringify(items);if(j==last)return;last=j;
+      const atEnd=isFeed&&el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
+      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length;el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));own=sf.watch.slice(n);if(isFeed&&(first||atEnd||me.stick)){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
    case"Text":bind(()=>{el.textContent=v(c.text)??"";el.className=c.variant=="caption"?"meta":""});break;
    case"ChatBubble":bind(()=>{const k=v(c.variant);el.className="bub "+(k=="me"?"me":k=="error"?"bad":k=="note"?"note":"");
-      el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+esc(v(c.text))});break;
+      el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+esc(v(c.text));
+      const rich=cleanRich(v(c.rich),v(c.to));if(rich){const h=document.createElement("div");h.className="rich";h.append(me.node(rich,"root",""));el.append(h)}
+      const ims=(Array.isArray(v(c.images))?v(c.images):[]).map(httpUrl).filter(Boolean).slice(0,8),lks=(Array.isArray(v(c.links))?v(c.links):[]).filter(l=>l&&httpUrl(l.url)).slice(0,8);
+      if(ims.length){const h=document.createElement("div");h.className="rich rimgs";for(const u of ims){const im=document.createElement("img");im.src=u;im.alt="";im.referrerPolicy="no-referrer";im.loading="lazy";h.append(im)}el.append(h)}
+      if(lks.length){const h=document.createElement("div");h.className="rich";for(const l of lks){const a=document.createElement("a");a.href=l.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=String(l.title||l.url);a.style.cssText="display:block;color:var(--acc)";h.append(a)}el.append(h)}});break;
+   case"Card":el.className="rcard";if(c.child)el.append(me.node(sf,c.child,scope));break;
+   case"Divider":el.className="rdiv";break;
+   case"Badge":el.className="pill rbadge";bind(()=>{el.textContent=v(c.text)??"";el.style.display=el.textContent?"":"none"});break;
+   case"Icon":bind(()=>{el.textContent=v(c.name)??""});break;
+   case"Image":{const im=document.createElement("img");im.className="rimg";im.alt=v(c.description)||"";im.referrerPolicy="no-referrer";im.loading="lazy";bind(()=>{const u=httpUrl(v(c.url));if(u)im.src=u;else im.removeAttribute("src")});el.append(im);break}
+   case"Tabs":{const tabs=Array.isArray(c.tabs)?c.tabs:[],bar=document.createElement("div"),body=document.createElement("div");bar.className="rtabs";
+      const show=i=>{[...bar.children].forEach((b,j)=>b.classList.toggle("on",j==i));body.replaceChildren(tabs[i]&&typeof tabs[i].child=="string"?me.node(sf,tabs[i].child,scope):"")};
+      tabs.forEach((t,i)=>{const b=document.createElement("button");b.type="button";b.textContent=String(v(t&&t.title)??"");b.onclick=()=>show(i);bar.append(b)});el.append(bar,body);show(0);break}
    case"TextField":{const long=c.variant=="longText",i=document.createElement(long?"textarea":"input");if(long)i.rows=1;i.autocomplete="off";i.placeholder=v(c.placeholder)||"";i.setAttribute("aria-label",v(c.label)||"");
       i.style.cssText="width:100%;min-width:180px;resize:none;max-height:120px;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)";
       const fit=()=>{if(long){i.style.height="auto";i.style.height=Math.min(i.scrollHeight,120)+"px"}};i.oninput=()=>{me.set(sf,c.value["@path"],i.value);fit()};i.onkeydown=e=>{if(e.key=="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();sf.comps.send&&me.fire(sf,"send",scope)}};
@@ -98,6 +124,8 @@ const chatFile=Object.assign(document.createElement("input"),{type:"file",style:
 chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",chatFile.files[0]?.name||"");sf.watch.forEach(f=>f())};
 A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="pick_file"){chatFile.click();return}
+  if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
+  if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
   if(name!="send_chat")return;
   const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
