@@ -620,3 +620,14 @@ async def test_name_filter_pass_opens_feedback_before_the_llm(monkeypatch):
     manual.client_listen_mode = "manual"
     await rah.startToChat(manual, "hello there")
     assert order == ["intent"]  # push-to-talk is not the name-filter / wake-ack path
+
+
+async def test_dock_flag_disables_wake_and_thinking_tones(tmp_path, monkeypatch):
+    monkeypatch.setenv("VOICE_BOX_DATA", str(tmp_path))
+    conn = FakeConn()
+    assert tones._enabled(conn, tones.WAKE_ACK_FLAG) and tones._enabled(conn, tones.THINKING_FLAG)
+    (tmp_path / "tones_disabled").write_text("1")
+    assert not tones._enabled(conn, tones.WAKE_ACK_FLAG)
+    assert not tones._enabled(conn, tones.THINKING_FLAG)
+    (tmp_path / "tones_disabled").unlink()
+    assert tones._enabled(conn, tones.WAKE_ACK_FLAG)
