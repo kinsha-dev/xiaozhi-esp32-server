@@ -191,6 +191,10 @@ def tone_duration(kind: str) -> float:
 
 def _enabled(conn, key: str) -> bool:
     """Missing config means on. Only an explicit false turns a tone off."""
+    from core.utils import audio_device
+
+    if audio_device.tones_disabled():  # Dock menu "Disable tones"; read per call so a toggle applies at once
+        return False
     cfg = getattr(conn, "config", None) or {}
     return cfg.get(key, True) is not False
 

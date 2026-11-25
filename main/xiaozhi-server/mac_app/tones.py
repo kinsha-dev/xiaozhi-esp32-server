@@ -61,6 +61,10 @@ def play_tone(kind: str, player: Callable[[np.ndarray, int], None] = None) -> No
     """Play a tone kind through `player(samples, rate)` (default: sounddevice.play, fire-and-forget)."""
     global _default_playing
     if player is None:
+        from core.utils.audio_device import tones_disabled
+
+        if tones_disabled():
+            return
         player = _play_default
         _default_playing = True
     else:

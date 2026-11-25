@@ -69,6 +69,34 @@ def build_controller():
                                     if os.environ.get("MAC_APP_DEBUG") else on_state(st)), notify)
 
 
+def install_dock_menu(ctl, menu_app):
+    """Right-click the Dock icon: "Disable tones" with a checkmark, kept in step with the menu-bar item."""
+    import objc
+    from AppKit import NSMenu, NSMenuItem
+    from rumps import rumps as _r
+
+    delegate = _r.NSApp
+
+    class _Toggle(objc.lookUpClass("NSObject")):
+        def toggle_(self, sender):
+            on = not ctl.tones_disabled()
+            ctl.set_tones_disabled(on)
+            menu_app.tones.state = on
+
+    toggler = _Toggle.alloc().init()
+
+    def applicationDockMenu_(self, app):
+        menu = NSMenu.alloc().init()
+        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Disable tones", "toggle:", "")
+        item.setTarget_(toggler)
+        item.setState_(1 if ctl.tones_disabled() else 0)
+        menu.addItem_(item)
+        return menu
+
+    objc.classAddMethods(delegate, [objc.selector(applicationDockMenu_, signature=b"@@:@")])
+    install_dock_menu._keep = toggler
+
+
 def main():
     import faulthandler
 
@@ -123,6 +151,8 @@ def main():
             self._show_link(ctl.board_link())
             self.auto = rumps.MenuItem("Speak updates on their own", callback=self.on_auto)
             self.auto.state = ctl.auto_speak()
+            self.tones = rumps.MenuItem("Disable tones", callback=self.on_tones)
+            self.tones.state = ctl.tones_disabled()
             self.animation = rumps.MenuItem("Voice animation", callback=self.on_animation)
             self.animation.state = ctl.voice_animation_enabled()
             self.ctrl = rumps.MenuItem("Vibi Ctrl")  # same tabs as the Vibi Ctrl panel; each opens it on that tab
@@ -133,7 +163,7 @@ def main():
                 self.ctrl.add(rumps.MenuItem(name, callback=lambda _, k=key: panel.open(k)))
             self.remote = rumps.MenuItem("Remote tunnel: off (click to start)", callback=self.on_remote)
             self.remote_copy = rumps.MenuItem("Copy remote link", callback=self.on_copy_remote)
-            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mode_menu, self.device_menu, self.link_menu, self.auto, self.animation, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
+            self.menu = [self.status, self.ctrl, self.remote, self.remote_copy, self.mode_menu, self.device_menu, self.link_menu, self.auto, self.animation, self.tones, self.retry, self.login, None, rumps.MenuItem("Quit", callback=self.on_quit)]
             self.timer = rumps.Timer(self.refresh, 0.05)
             self.timer.start()
 
@@ -186,6 +216,10 @@ def main():
             item.state = not item.state
             ctl.set_auto_speak(bool(item.state))
 
+        def on_tones(self, item):
+            item.state = not item.state
+            ctl.set_tones_disabled(bool(item.state))
+
         def on_animation(self, item):
             item.state = not item.state
             ctl.set_voice_animation(bool(item.state))
@@ -236,4 +270,6 @@ def main():
         (ctl.cfg.data_dir / "ctrl_hotkeys.json").write_text(json.dumps({"pid": os.getpid(), "armed": armed}))
     except OSError:
         pass
-    MenuApp().run()
+    app = MenuApp()
+    install_dock_menu(ctl, app)
+    app.run()

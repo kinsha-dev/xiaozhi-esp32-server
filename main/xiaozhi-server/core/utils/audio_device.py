@@ -1,6 +1,7 @@
 """Which device answers the wake word, shared with the Mac menu-bar app through files in the voice-box data dir.
 
 data/audio_device  "auto" | "mac" | "board" (written by the Mac app's vb menu)
+data/tones_disabled  exists = wake and thinking tones are off (Mac app Dock menu)
 data/board_state   "<unix ts> listening|speaking|idle" (written here, mirrored by the Mac app's overlay)
 """
 import os
@@ -32,6 +33,11 @@ def mode() -> str:
 def muted() -> bool:
     """True while the Mac app's Mute or Stealth mode is on (data/muted or data/stealth exists): the board neither listens nor answers."""
     return (_dir() / "muted").exists() or (_dir() / "stealth").exists()
+
+
+def tones_disabled() -> bool:
+    """True while "Disable tones" is on in the Mac app's Dock / menu-bar menu (data/tones_disabled exists): no wake or thinking tones."""
+    return (_dir() / "tones_disabled").exists()
 
 
 def board_muted(conn) -> bool:

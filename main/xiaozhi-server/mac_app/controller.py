@@ -111,6 +111,24 @@ class Controller:
     def _stealth_file(self):
         return self.cfg.data_dir / "stealth" if self.cfg.data_dir else None
 
+    def _tones_file(self):
+        return self.cfg.data_dir / "tones_disabled" if self.cfg.data_dir else None
+
+    def tones_disabled(self) -> bool:
+        f = self._tones_file()
+        return f is not None and f.exists()
+
+    def set_tones_disabled(self, on: bool):
+        """Shared through data/tones_disabled: the server skips the wake and thinking tones while it exists, and survives restarts."""
+        f = self._tones_file()
+        if f is None:
+            return
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("1") if on else f.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     def listen_mode(self) -> str:
         """active (listening and speaking), stealth (animation and typed commands only) or mute (silent)."""
         return "mute" if self.muted else "stealth" if self.stealth else "active"
