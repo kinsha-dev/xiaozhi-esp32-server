@@ -67,7 +67,7 @@ function chatMessagesUpdate(m){const out=[];  // board rows (newest first) -> bu
   for(const r of m.filter(r=>CHAT_NAMES[r.source]).slice().reverse()){const who=CHAT_NAMES[r.source],body=r.body||r.summary||"",bad=r.status=="failed"?"error":"reply";
     if(r.source=="Gemini"||r.source=="Todo"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
       if(q){out.push({meta:`You → ${who} · ${r.time}`,text:q[1],variant:"me"},{meta:`${who} · ${r.time}`,text:q[2],variant:bad,reply:replyTarget(r,q[2])});continue}}
-    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
+    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.source=="Claude"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
   if(!out.length)out.push({meta:"",text:"No conversation yet. Pick Claude, Grok or Gemini above and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
 /* ---- Reply menu: select one response (Chat bubble or Message board row) and answer it. The menu is its own A2UI surface;
@@ -77,11 +77,12 @@ const REPLY_FROM={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Vibi":"
 const replyTarget=(r,text)=>r.direction=="to"&&REPLY_FROM[r.source]&&text?{key:String(r.id),who:REPLY_FROM[r.source],time:r.time,to:CHAT_TO[r.source]||"claude",quote:String(text)}:null;
 const Reply={target:null,el:null,busy:false,
  open(t){if(this.target?.key!=t.key){this.target=t;A2ui.process({version:"1.0",createSurface:{surfaceId:"reply",catalogId:"vibi:ctrl-chat",components:[
-    {id:"root",component:"Column",children:["quote","text","bar"]},
+    {id:"root",component:"Column",children:["quote","text","bar","hint"]},
+    {id:"hint",component:"Text",variant:"caption",text:"Computer use gets only your text and the first link in the quote; Vibi asks out loud before anything risky."},
     {id:"quote",component:"Text",variant:"caption",text:{"@path":"/reply/quote"}},
     {id:"text",component:"TextField",label:"Reply",placeholder:"Reply…",variant:"longText",value:{"@path":"/reply/text"}},
     {id:"bar",component:"Row",align:"center",children:["to","send","cancel"]},
-    {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Reply to",value:{"@path":"/reply/to"},options:[{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"}]},
+    {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Reply to",value:{"@path":"/reply/to"},options:[{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"}]},
     {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_reply",context:{to:{"@path":"/reply/to"},text:{"@path":"/reply/text"}}}}},
     {id:"sendLbl",component:"Text",text:"Send reply"},
     {id:"cancel",component:"Button",child:"cancelLbl",action:{event:{name:"cancel_reply"}}},
@@ -101,10 +102,12 @@ const Reply={target:null,el:null,busy:false,
  compose(t,text){  // no blank lines: the Chat tab splits Gemini's "Q: …\n\nA: …" rows at the first one
   const tidy=s=>s.replace(/\n\s*\n/g,"\n").trim(),head=`Replying to ${t.who} (${t.time}):`,body=tidy(text),q=tidy(t.quote),room=Math.min(QUOTE_MAX,CHAT_MAX-head.length-body.length-20);
   if(room<1)return null;return`${head}\n> ${(q.length>room?q.slice(0,room)+"…":q).replace(/\n/g,"\n> ")}\n${body}`},
+ task(t,text){  // computer use takes one short task (300 chars) and drives the Mac: pass the user's words plus a link, not the bot's text
+  const link=(t.quote.match(/https?:\/\/[^\s<>"'()\[\]]+/)||[""])[0].replace(/[.,;:!?]+$/,""),task=text.replace(/\s+/g," ")+(link?` (link: ${link})`:"");return task.length<=280?task:null},
  async send(ctx){const text=String(ctx.text||"").trim(),to=(ctx.to||[])[0],t=this.target;if(!text||!t||this.busy)return;
-  const full=this.compose(t,text);if(!full||full.length>CHAT_MAX){toast("Reply too long");return}
+  const cu=to=="computer",full=cu?this.task(t,text):this.compose(t,text);if(!full||full.length>CHAT_MAX){toast(cu?"Keep a computer task short (280 characters, link included)":"Reply too long");return}
   this.busy=true;try{const r=await api("/api/chat",{to,text:full});if(r.error){toast(r.error);return}
-   if(this.target===t)this.close();A2ui.stick=true;toast(r.to=="todo"?r.note:to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude"));load()}
+   if(this.target===t)this.close();A2ui.stick=true;toast(to=="computer"?"Sent to computer use. "+r.note:r.note||(to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude")));load()}
   catch(e){toast("Could not send the reply")}finally{this.busy=false}}};
 /* Rich answers: an optional A2UI surface (`ui`) from the bot is untrusted. It is cut down again here (whitelisted components,
    http(s) URLs only, Button events limited to reply / open_url) and drawn with the same renderer; unknown components become Text. */
@@ -175,7 +178,7 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
-  toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
+  toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.mount("chat",$("#chatHost"))}
   A2ui.process(chatMessagesUpdate(await api("/api/messages?hours=72")))}
 /* ---- Todo tab: data/todos.jsonl, also written by the voice tools and the Chat tab; polled every 2 s so those show up live.

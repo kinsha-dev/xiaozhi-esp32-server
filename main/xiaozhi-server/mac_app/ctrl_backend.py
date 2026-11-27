@@ -155,6 +155,30 @@ def _nudge_grok(mid: str) -> None:
     threading.Thread(target=post, daemon=True, name="grok-nudge").start()
 
 
+NOT_LISTENING = "Saved for Claude, but no Claude session is listening. It will be read when one starts listening."
+
+
+def listener_in(commands) -> bool:
+    """True when one of these process command lines is a `vibi listen` that takes "voice box" messages."""
+    for line in commands:
+        m = re.match(r"\S*[Pp]ython\S*\s+(?:-\S+\s+)*\S*vibi listen\b(.*)", line.strip())
+        if not m:
+            continue
+        project = re.search(r"--project[ =](.*?)(?= --|$)", m.group(1))
+        # no --project: it comes from the listener's folder, which we can't see here, so don't claim nobody is there
+        if not project or {"voice", "box"} <= set(re.findall(r"[a-z0-9]+", project.group(1).lower())):
+            return True
+    return False
+
+
+def claude_listening() -> bool:
+    try:
+        out = subprocess.run(["ps", "-axo", "command="], capture_output=True, text=True, timeout=5, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True  # can't tell: no warning
+    return listener_in(out.splitlines())
+
+
 def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
     """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads), to the Grok Bot
     (a `task` request in data/grok/requests) or to Gemini (answered in the background, OpenRouter if Gemini fails; the answer
@@ -188,6 +212,8 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
             fcntl.flock(lock, fcntl.LOCK_EX)
             with open(d / "to_claude.jsonl", "a") as f:
                 f.write(json.dumps(row) + "\n")
+        if not claude_listening():
+            return {"id": mid, "to": to, "note": NOT_LISTENING}
     else:
         req = d / "grok" / "requests"
         req.mkdir(parents=True, exist_ok=True)
