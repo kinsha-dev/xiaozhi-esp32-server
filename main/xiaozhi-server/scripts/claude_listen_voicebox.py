@@ -5,7 +5,8 @@ Reads the hook JSON on stdin and, for every project (any cwd below the home dire
 narrows it to those folders), registers this session as the project's latest listener and adds
 context telling Claude to run `vibi listen --project <project>` in the background and to start it again each time
 it returns. The project is the git repo's folder name (the main checkout's, inside a worktree), which is what
-`vibi` matches "tell Claude <project>, ..." against. VIBI_LISTEN_PROJECT overrides the name. Always exits 0. Stdlib only.
+`vibi` matches "tell Claude <project>, ..." against. VIBI_LISTEN_PROJECT overrides the name. If data/listeners/<project>.main holds a session id, only that
+session registers and listens. Always exits 0. Stdlib only.
 """
 import json
 import os
@@ -26,6 +27,14 @@ def wanted(cwd):
         return Path(cwd).resolve() != Path.home() and Path.home() in Path(cwd).resolve().parents
     except (OSError, ValueError, TypeError):
         return False
+
+
+def pinned(project):
+    """Session id in listeners/<project>.main, if the user pinned the project's listener to one session."""
+    try:
+        return (DATA / "listeners" / (project.replace("/", "_") + ".main")).read_text().strip()
+    except OSError:
+        return ""
 
 
 def register(project, session):
@@ -59,6 +68,9 @@ def main():
             return 0
         project = os.environ.get("VIBI_LISTEN_PROJECT") or project_name(cwd)
         session = data.get("session_id") or ""
+        main_session = pinned(project)
+        if main_session and session != main_session:
+            return 0  # another session owns this project's listener; do not take it over
         sess_arg = ""
         if session:
             register(project, session)
