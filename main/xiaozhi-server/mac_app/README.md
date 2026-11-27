@@ -31,9 +31,13 @@ Tests: `mac_app/tests/test_todo_tab.py` (`VIBI_TODO_STORE` points it at another 
 ## Replying to one response
 
 In **Chat** or **Message board**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply
-menu: the quoted response, a text box, and a recipient (Claude, Grok Bot or Gemini; preselected to the sender, Claude for
+menu: the quoted response, a text box, and a recipient (Claude, Grok Bot, Gemini or Computer use; preselected to the sender, Claude for
 Vibi). The reply goes through `/api/chat` with up to 1000 characters of the quote in front as context. Enter sends,
 Shift+Enter adds a line, Escape cancels.
+
+- **Claude** only acts when a session is listening (`vibi listen`); otherwise the panel says so and the message waits.
+- **Computer use** gets your text and the first link in the quote (not the rest of it), up to 280 characters, through the
+  same path as a spoken "use the computer to …", with its spoken yes for risky tasks.
 
 ## Vibi Ctrl remote access (tunnel) and passkeys
 
