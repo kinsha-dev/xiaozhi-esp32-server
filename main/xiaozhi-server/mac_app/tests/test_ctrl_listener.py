@@ -22,3 +22,23 @@ def test_chat_to_claude_says_when_nobody_is_listening(tmp_path, monkeypatch):
     assert "open the pr" in (tmp_path / "to_claude.jsonl").read_text()
     monkeypatch.setattr(be, "claude_listening", lambda: True)
     assert "note" not in be.chat(tmp_path, "claude", "again")
+
+
+def test_chat_to_claude_calls_the_wake_launcher(tmp_path, monkeypatch):
+    client = tmp_path / "client.py"
+    client.write_text("calls = []\n"
+                      "def notify(data_dir, row, origin):\n"
+                      "    (data_dir / 'called').write_text(origin + ' ' + row['text'])\n"
+                      "    return {'status': 'queued'}\n")
+    monkeypatch.setenv("VIBI_WAKE_CLIENT", str(client))
+    monkeypatch.setattr(be, "claude_listening", lambda: False)
+    assert "starting Claude" in be.chat(tmp_path, "claude", "open the pr")["note"]
+    assert (tmp_path / "called").read_text() == "vibi-ctrl open the pr"
+    monkeypatch.setattr(be, "claude_listening", lambda: True)
+    assert "note" not in be.chat(tmp_path, "claude", "again")
+
+
+def test_without_the_launcher_the_old_note_stays(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIBI_WAKE_CLIENT", str(tmp_path / "missing.py"))
+    monkeypatch.setattr(be, "claude_listening", lambda: False)
+    assert be.chat(tmp_path, "claude", "hi")["note"] == be.NOT_LISTENING

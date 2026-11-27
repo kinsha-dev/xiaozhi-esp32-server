@@ -71,3 +71,6 @@ have to freeze torch/whisper/webrtcvad/opuslib/rumps (GBs, fragile) for the same
 - Signing is ad-hoc with a fixed designated requirement (`identifier "com.voicebox.vibi"`), so permissions granted once survive rebuilds.
 - Grant once in System Settings > Privacy & Security: Microphone, Bluetooth, Accessibility (hotkeys + computer use input), Screen & System Audio Recording (computer use screenshots), Automation (computer use / notifications), and Full Disk Access if needed, to **Vibi** only. Accessibility, Screen Recording and Full Disk Access have no Info.plist key; macOS prompts or you add Vibi.app by hand with +.
 - Restart after a rebuild: kill the running mac_app python pid (`open -W` keeps the old one), then `launchctl kickstart -k gui/$(id -u)/com.voicebox.macapp`.
+
+Messages sent to Claude from Vibi Ctrl also call the voice box's wake launcher (`docs/wake-launcher.md` in
+voice-note-box), which can start Claude when no session is listening. Without that launcher nothing changes.

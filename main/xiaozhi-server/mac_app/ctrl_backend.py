@@ -156,6 +156,15 @@ def _nudge_grok(mid: str) -> None:
 
 
 NOT_LISTENING = "Saved for Claude, but no Claude session is listening. It will be read when one starts listening."
+WAKING = "No Claude session is listening, so Vibi is starting Claude for this. The answer will show on the board."
+
+
+def wake_claude(data_dir: Path, row: dict) -> bool:
+    """Tell the voice box's wake launcher about a message the user typed. True when it queued a run."""
+    client = _load_module("vibi_wake_client", data_dir, "VIBI_WAKE_CLIENT", "wake_client.py")
+    if client is None:
+        return False
+    return (client.notify(data_dir, row, "vibi-ctrl") or {}).get("status") == "queued"
 
 
 def listener_in(commands) -> bool:
@@ -212,8 +221,9 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
             fcntl.flock(lock, fcntl.LOCK_EX)
             with open(d / "to_claude.jsonl", "a") as f:
                 f.write(json.dumps(row) + "\n")
+        waking = wake_claude(d, row)  # always told: it waits, and does nothing if a listener takes the message
         if not claude_listening():
-            return {"id": mid, "to": to, "note": NOT_LISTENING}
+            return {"id": mid, "to": to, "note": WAKING if waking else NOT_LISTENING}
     else:
         req = d / "grok" / "requests"
         req.mkdir(parents=True, exist_ok=True)
