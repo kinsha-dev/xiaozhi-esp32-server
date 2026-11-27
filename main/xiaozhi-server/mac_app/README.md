@@ -35,6 +35,13 @@ Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in 
 ("Conversations" = the first six), direction (to or from Vibi) and time range (last 72 hours or all time); the newest
 300 matches are shown and the choice is remembered. Long feed items start collapsed. Old `#board` links open Chat.
 
+**Voice and typed turns** are in the timeline too, labelled and filterable: what Vibi heard or you typed, its replies,
+announcements and reminders. They come from `data/history.jsonl`, `data/memory/conversations.jsonl` and the outbox.
+Replies appear as they are given once the voice server runs this version (it logs `reply` rows); before that, only when a
+conversation ends. Not recorded: audio that is not put into the dialogue (music, TV and tone playback, some error or
+filler lines), what the board or Mac says on its own without the server, and replies in Chinese. Replies from before
+this version exist only for conversations the memory kept (at least one user turn and one other).
+
 ## Replying to one response
 
 In **Chat**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply

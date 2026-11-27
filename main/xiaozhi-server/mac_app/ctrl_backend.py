@@ -12,6 +12,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from mac_app import ctrl_voice
+
 LABELS = {"server": "com.voicebox.server", "whisper": "com.voicebox.whisper", "macapp": "com.voicebox.macapp"}
 ERR_LINE = re.compile(r"(ERROR|Traceback|Exception|CRITICAL|Error:)")
 SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{32,}|(?:password|token|key)\s*[=:]\s*\S+)", re.I)
@@ -64,13 +66,17 @@ def message_type(row: dict) -> str:
 
 def _has_direction(row: dict, direction: str) -> bool:
     # a Gemini / Todo "Q: ... A: ..." row is both what was asked and the answer
-    return row.get("direction") == direction or (row.get("source") in ("Gemini", "Todo") and str(row.get("body")).startswith("Q: "))
+    both = (row.get("source") in ("Gemini", "Todo") and str(row.get("body")).startswith("Q: ")) or (
+        row.get("channel") == "typed" and str(row.get("body")).startswith("You: "))
+    return row.get("direction") == direction or both
 
 
-def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "all", direction: str = "all") -> list:
+def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "all", direction: str = "all",
+             input: str = "all") -> list:
     """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
     category and a type. Only the last `hours` hours (0 = everything), filtered by `type` (a message_type value,
-    "conversation" or "all") and `direction` ("to" Vibi, "from" you, or "all") before the limit. Read through the voice box repo's message_board module, found next to the data dir."""
+    "conversation" or "all") `direction` ("to" Vibi, "from" you, or "all") and `input` ("voice", "typed" or "all") before the limit. Voice and
+    typed turns, spoken replies and announcements are merged in (ctrl_voice). Read through the voice box repo's message_board module, found next to the data dir."""
     import importlib.util
 
     mod_path = Path(os.environ.get("VIBI_MESSAGE_BOARD") or Path(data_dir).parent / "server" / "message_board.py")
@@ -79,7 +85,7 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
     spec = importlib.util.spec_from_file_location("vibi_message_board", mod_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    rows = mod.messages(Path(data_dir))
+    rows = ctrl_voice.merge(Path(data_dir), mod.messages(Path(data_dir)))
     if hours and hours > 0:
         cutoff = time.time() - hours * 3600
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
@@ -87,6 +93,8 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
     if type != "all":
         wanted = CONVERSATION_TYPES if type == "conversation" else (type,)
         rows = [r for r in rows if r["type"] in wanted]
+    if input != "all":
+        rows = [r for r in rows if r["input"] == input]
     if direction != "all":
         rows = [r for r in rows if _has_direction(r, direction)]
     rows = rows[:limit]
@@ -256,6 +264,16 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
 
 
 # --- todos (shared with the voice tools through data/todos.jsonl) ----------------------------------
+def note_typed(data_dir: Path, to: str, text: str):
+    """Mark in the history log that this command came from the panel; the server logs it like a spoken one."""
+    try:
+        log = _load_module("vibi_history_log", data_dir, "VIBI_HISTORY_LOG", "plugin/history_log.py")
+        if log is not None:
+            log.record("typed", name=to, said=text, source="typed", data_dir=Path(data_dir), text=text)
+    except Exception:
+        pass  # only the voice / typed label is lost
+
+
 def _todo_store(data_dir: Path):
     return _load_module("vibi_todo_store", data_dir, "VIBI_TODO_STORE", "todo_store.py")
 

@@ -12,6 +12,7 @@ from mac_app import ctrl_backend as be
 from mac_app.ctrl import CtrlPanel
 
 HTML = (Path(__file__).parents[1] / "ctrl_ui" / "index.html").read_text()
+NOW = time.time()
 
 ROWS = [  # (source, channel, direction, body, expected type)
     ("Claude", "outbox", "to", "done", "claude"),
@@ -36,8 +37,8 @@ def _board(tmp_path, rows):
     return data
 
 
-def _row(i, source, channel, direction, body, ts=None):
-    return {"id": str(i), "source": source, "channel": channel, "direction": direction, "ts": ts or time.time(),
+def _row(i, source, channel, direction, body, ts=None):  # equal times keep the listed order
+    return {"id": str(i), "source": source, "channel": channel, "direction": direction, "ts": ts or NOW,
             "time": "t", "status": "done", "summary": body, "body": body, "pair_id": ""}
 
 

@@ -50,8 +50,9 @@ function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load
    Catalog: the basic catalog (Column, Row, List, Text, TextField, ChoicePicker, Button) plus one custom component, ChatBubble. ---- */
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
  {id:"root",component:"Column",children:["filters","feed","form"]},
- {id:"filters",component:"Row",align:"center",children:["fType","fDir","fRange"]},
+ {id:"filters",component:"Row",align:"center",children:["fType","fInput","fDir","fRange"]},
  {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
+ {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
  {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
  {id:"fRange",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Time range",value:{"@path":"/filter/hours"},action:{event:{name:"filter"}},options:[{label:"Last 72 hours",value:"72"},{label:"All time",value:"0"}]},
  {id:"form",component:"Row",align:"end",children:["to","text","fileBtn","fileName","send"]},
@@ -64,16 +65,17 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
  {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"}}],
- dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],direction:["all"],hours:["72"]},messages:[]}}};
+ dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
 function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
   for(const r of m.slice().reverse()){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
-    if(r.source=="Gemini"||r.source=="Todo"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
-      if(q){if(direction!="to")out.push({meta:`You → ${who} · ${r.time}`,text:q[1],variant:"me"});if(direction!="from")out.push({meta:`${who} · ${r.time}`,text:q[2],variant:bad,reply:replyTarget(r,q[2])});continue}}
+    const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>p.filter(Boolean).join(" · ");
+    if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
+      if(q){if(direction!="to")out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me"});if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});continue}}
     const extra={...(CLAMPED.includes(r.type)?{clamp:String(r.id)}:{}),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})};
     const status=r.source=="Claude"&&r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status;
-    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${status}`,text:body,variant:"me",...extra}:{meta:`${r.category} · ${r.time} · ${r.status}`,text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...extra})}
+    out.push(r.direction=="from"?{meta:line(`You → ${who}`,r.time,status,r.input),text:body,variant:"me",...extra}:{meta:line(r.category,r.time,r.status,how),text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...extra})}
   if(!out.length)out.push({meta:"",text:"No messages match. Change the filters, or pick Claude, Grok or Gemini below and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
 /* ---- Reply menu: select one response (a Chat bubble) and answer it. The menu is its own A2UI surface;
@@ -187,9 +189,9 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
   toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 let chatSeq=0;
-function savedFilter(){const f={type:["all"],direction:["all"],hours:["72"]};try{const s=JSON.parse(localStorage.getItem("vctrlFilter"));for(const k in f)if(typeof s?.[k]?.[0]=="string")f[k]=[s[k][0]]}catch(e){}return f}
+function savedFilter(){const f={type:["all"],input:["all"],direction:["all"],hours:["72"]};try{const s=JSON.parse(localStorage.getItem("vctrlFilter"));for(const k in f)if(typeof s?.[k]?.[0]=="string")f[k]=[s[k][0]]}catch(e){}return f}
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter=savedFilter();A2ui.mount("chat",$("#chatHost"))}
-  const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],direction:f.direction[0],hours:f.hours[0]});
+  const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],input:f.input[0],direction:f.direction[0],hours:f.hours[0]});
   const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat")A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}
 /* ---- Todo tab: data/todos.jsonl, also written by the voice tools and the Chat tab; polled every 2 s so those show up live.
    The form is built once and only the list is redrawn, and only when it changed, so typing is never interrupted. ---- */
