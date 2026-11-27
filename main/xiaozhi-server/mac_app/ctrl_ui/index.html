@@ -13,6 +13,7 @@ main{padding:16px 20px;max-width:980px;margin:auto}
 body.chat{height:100dvh;display:flex;flex-direction:column;overflow:hidden}body.chat header{position:static}body.chat main{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding-bottom:10px}
 #chatHost{flex:1;min-height:0;position:relative}#fbtn{position:absolute;top:4px;right:14px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 #chatHost>div>div:first-child{position:absolute;top:40px;right:14px;z-index:5;flex-direction:column!important;align-items:stretch!important;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.3)}#chatHost:not(.fopen)>div>div:first-child{display:none!important}
+.cmdbar{display:flex;gap:12px;margin-top:4px}.bub.me .rbtn{color:#fff;text-decoration:underline}.readbox{margin-top:6px;border-top:1px solid rgba(128,128,128,.4);padding-top:6px;white-space:pre-wrap;font-size:12px;max-height:220px;overflow:auto}
 .thread{display:flex;flex-direction:column;gap:4px;max-width:78%;flex:none}.thread.child{align-self:flex-end;margin-top:-6px;margin-right:12px;border-right:2px solid var(--line);padding-right:8px}.action{background:var(--card);border-radius:10px;padding:5px 10px;font-size:12px}.ahead{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ahead button.act{padding:1px 8px}.adetail{color:var(--mut);word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.adetail.open{display:block;white-space:pre-wrap}#chatHost>div{height:100%}#chatHost>div>div:last-child{padding-top:10px;border-top:1px solid var(--line)}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:12px}td.t{white-space:nowrap;color:var(--mut)}td.d{color:var(--mut);font-size:12px;word-break:break-word}
@@ -38,14 +39,15 @@ button.act:hover{border-color:var(--acc)}
 <header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
-const T="__TOKEN__",TABS=[["chat","Chat"],["commands","Commands"],["notes","Notes"],["todo","Todo"],["components","Components"]];
-const OLD_TABS={board:"chat",actions:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board and #actions links open Chat
+const T="__TOKEN__",TABS=[["chat","Chat"],["notes","Notes"],["todo","Todo"],["components","Components"]];
+const OLD_TABS={board:"chat",actions:"chat",commands:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board, #actions, #commands links open Chat
+let linkFilter=location.hash=="#commands"?{type:["commands"],action:["all"],hours:["0"]}:null;  // the old Commands list
 let tab=tabKey(location.hash.slice(1))||tabKey(localStorage.getItem("vctrlTab"))||"chat",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
 function nav(){$("#nav").innerHTML=TABS.map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
-function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
+function go(k){window.speechSynthesis?.cancel();tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
 
 /* ---- Chat tab: an A2UI v1.0 surface (https://a2ui.org). The "agent" side below emits createSurface / updateDataModel messages
    (flat component list, @path bindings, event actions, list template); A2ui renders them with this page's own components.
@@ -53,7 +55,7 @@ function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
  {id:"root",component:"Column",children:["filters","feed","form"]},
  {id:"filters",component:"Row",align:"center",children:["fType","fAct","fInput","fDir","fRange"]},
- {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
+ {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Commands",value:"commands"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
  {id:"fAct",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Action",value:{"@path":"/filter/action"},action:{event:{name:"filter"}},options:[{label:"Action: recognized",value:"recognized"},{label:"Action: unrecognized",value:"unrecognized"},{label:"Action: all",value:"all"}]},
  {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
  {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
@@ -67,7 +69,7 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"}}],
+ {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
@@ -75,11 +77,12 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
   for(const r of m.slice().reverse()){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
     const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>p.filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
     if(r.channel=="action"){out.push({variant:"actions",actions:acts});continue}
+    const command=r.command?{command:{...r.command,id:String(r.id),time:r.time,status:r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:missed||(r.input=="typed"?"typed":"recognized")}}:{};
     if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
-      if(q){if(direction!="to"){out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me"});if(acts)out.push({variant:"thread",actions:acts})}if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});continue}}
+      if(q){if(direction!="to"){out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me",...command});if(acts)out.push({variant:"thread",actions:acts})}if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});continue}}
     const extra={...(CLAMPED.includes(r.type)?{clamp:String(r.id)}:{}),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})};
     const status=r.source=="Claude"&&r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status;
-    out.push(r.direction=="from"?{meta:line(`You → ${who}`,r.time,status,r.input,missed),text:body,variant:"me",...extra}:{meta:line(r.category,r.time,r.status,how,missed),text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...extra});
+    out.push(r.direction=="from"?{meta:line(`You → ${who}`,r.time,status,r.input,missed),text:body,variant:"me",...command,...extra}:{meta:line(r.category,r.time,r.status,how,missed),text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...extra});
     if(acts)out.push({variant:"thread",actions:acts})}
   if(!out.length)out.push({meta:"",text:"No messages match. Change the filters, or pick Claude, Grok or Gemini below and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
@@ -121,6 +124,16 @@ const Reply={target:null,el:null,busy:false,
   this.busy=true;try{const r=await api("/api/chat",{to,text:full});if(r.error){toast(r.error);return}
    if(this.target===t)this.close();A2ui.stick=true;toast(to=="computer"?"Sent to computer use. "+r.note:r.note||(to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude")));load()}
   catch(e){toast("Could not send the reply")}finally{this.busy=false}}};
+/* Read and Rerun on a command entry (what the Commands tab offered). Read shows the command with its result and, unless
+   Stealth is on, reads it aloud in this browser; nothing is sent anywhere. Only a click reads or reruns. */
+const quiet=()=>window.speechSynthesis?.cancel();
+function commandBar(c,expanded){const bar=document.createElement("div"),box=document.createElement("div"),key="read-"+c.id,result=c.result.join("\n");bar.className="cmdbar";box.className="readbox";
+  box.textContent=[`Command: ${c.text}`,`Status: ${c.status} · ${c.time}`,`Result: ${result||"none recorded"}`].join("\n");
+  const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent=text;b.onclick=run;bar.append(b);return b};
+  const read=button("",()=>{const open=!expanded.has(key);open?expanded.add(key):expanded.delete(key);show();quiet();
+    if(open&&window.speechSynthesis&&!$("#stealth").checked)speechSynthesis.speak(new SpeechSynthesisUtterance(`Command: ${c.text}. ${result?"Result: "+result:"No result recorded."}`.slice(0,1500)))});
+  const show=()=>{const open=expanded.has(key);box.hidden=!open;read.textContent=open?"Close":"Read";read.setAttribute("aria-expanded",open)};show();
+  if(c.rerun)button("Rerun",()=>rerun(c.id,c.risky,"chat"));return[bar,box]}
 /* One action under (or without) its command: everything the Actions tab showed, with its Rerun button. */
 function actionItem(a,expanded){const el=document.createElement("div"),tone=a.status=="error"?"error":a.status=="ok"||a.status=="done"?"ok":"";el.className="action";
   el.innerHTML=`<div class="ahead"><b>${esc(a.title)}</b><span class="pill ${tone}">${esc(a.status)}</span>${a.risky?'<span class="pill warn">asks first</span>':""}<span class="meta">${esc([a.source,a.time].filter(Boolean).join(" · "))}</span></div>`+(a.detail?`<div class="adetail">${esc(a.detail)}</div>`:"");
@@ -163,6 +176,7 @@ const A2ui={surfaces:{},onEvent:null,expanded:new Set(),
       const ims=(Array.isArray(v(c.images))?v(c.images):[]).map(httpUrl).filter(Boolean).slice(0,8),lks=(Array.isArray(v(c.links))?v(c.links):[]).filter(l=>l&&httpUrl(l.url)).slice(0,8);
       if(ims.length){const h=document.createElement("div");h.className="rich rimgs";for(const u of ims){const im=document.createElement("img");im.src=u;im.alt="";im.referrerPolicy="no-referrer";im.loading="lazy";h.append(im)}el.append(h)}
       if(lks.length){const h=document.createElement("div");h.className="rich";for(const l of lks){const a=document.createElement("a");a.href=l.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=String(l.title||l.url);a.style.cssText="display:block;color:var(--acc)";h.append(a)}el.append(h)}
+      const cm=v(c.command);if(cm)el.append(...commandBar(cm,me.expanded));
       const rt=v(c.reply);if(rt){Reply.attach(el,rt);el.append(Reply.button(rt))}});break;
    case"Card":el.className="rcard";if(c.child)el.append(me.node(sf,c.child,scope));break;
    case"Divider":el.className="rdiv";break;
@@ -206,7 +220,7 @@ const defaultFilter=()=>({type:["all"],action:["recognized"],input:["all"],direc
 function filterButton(){const b=$("#fbtn"),f=A2ui.surfaces.chat.data.filter,d=defaultFilter(),n=Object.keys(d).filter(k=>f[k][0]!=d[k][0]).length;if(!b)return;b.textContent="Filter"+(n?` (${n})`:"")}
 function filterOpen(on){$("#chatHost")?.classList.toggle("fopen",on);$("#fbtn")?.setAttribute("aria-expanded",on)}
 function savedFilter(){const f=defaultFilter();try{const s=JSON.parse(localStorage.getItem("vctrlFilter"));for(const k in f)if(typeof s?.[k]?.[0]=="string")f[k]=[s[k][0]]}catch(e){}return f}
-async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter=savedFilter();A2ui.mount("chat",$("#chatHost"));
+async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter={...savedFilter(),...linkFilter};linkFilter=null;A2ui.mount("chat",$("#chatHost"));
     const b=document.createElement("button");b.id="fbtn";b.type="button";b.className="act";b.onclick=()=>filterOpen(!$("#chatHost").classList.contains("fopen"));$("#chatHost").append(b);filterOpen(false);filterButton()}
   const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],action:f.action[0],input:f.input[0],direction:f.direction[0],hours:f.hours[0]});
   const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat")A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}

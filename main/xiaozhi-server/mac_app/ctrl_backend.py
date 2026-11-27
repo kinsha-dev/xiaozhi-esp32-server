@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -77,7 +78,7 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
              input: str = "all", action: str = "recognized") -> list:
     """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
     category and a type. Only the last `hours` hours (0 = everything), filtered before the limit by `type` (a
-    message_type value, "conversation", "actions" = rows with actions, or "all"), `direction` ("to" Vibi, "from" you, or
+    message_type value, "conversation", "actions" = rows with actions, "commands" = rows with one, or "all"), `direction` ("to" Vibi, "from" you, or
     "all"), `input` ("voice", "typed" or "all") and `action` ("recognized" leaves out unrecognized voice turns,
     "unrecognized" shows only those, "all" both). Voice and typed turns, spoken replies, actions and announcements are
     merged in (ctrl_voice). Read through the voice box repo's message_board module, found next to the data dir."""
@@ -94,8 +95,8 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
         cutoff = time.time() - hours * 3600
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
     rows = [{**r, "type": message_type(r)} for r in rows]
-    if type == "actions":
-        rows = [r for r in rows if r["actions"]]
+    if type in ("actions", "commands"):
+        rows = [r for r in rows if r.get(type if type == "actions" else "command")]
     elif type == "conversation":
         rows = [r for r in rows if r["type"] in CONVERSATION_TYPES and r.get("channel") != "action"]
     elif type != "all":
@@ -109,12 +110,23 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
     if direction != "all":
         rows = [r for r in rows if _has_direction(r, direction)]
     rows = rows[:limit]
+    _mark_risky(data_dir, rows)
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
 
 CHAT_TARGETS = ("claude", "grok", "gemini")
 CHAT_LIMIT = 4000
 FILE_LIMIT = 5 * 1024 * 1024
+
+
+def _mark_risky(data_dir: Path, rows: list):
+    """A command also asks first when its wording is risky (the history log's own rule, used for actions)."""
+    log = _load_module("vibi_history_log", data_dir, "VIBI_HISTORY_LOG", "plugin/history_log.py")
+    check = getattr(log, "is_risky", None)
+    for r in rows:
+        c = r.get("command")
+        if check and c and c["rerun"] and not c["risky"]:
+            c["risky"] = bool(check("", c["text"]))
 
 
 def _load_module(name: str, data_dir: Path, env: str, rel: str):
@@ -371,7 +383,13 @@ def history(data_dir: Path, kind: str, limit: int = 100) -> list:
 
 
 def find_rerun(data_dir: Path, kind: str, id_: str):
-    """The spoken text to replay for an entry, plus whether it is risky; None when it cannot be rerun."""
+    """The spoken text to replay for an entry, plus whether it is risky; None when it cannot be rerun. Kind "chat" is
+    a command entry of the Chat timeline."""
+    if kind == "chat":
+        for r in messages(data_dir, limit=sys.maxsize, hours=0, type="commands", action="all"):
+            if r["id"] == id_ and r["command"]["rerun"]:
+                return {"text": r["command"]["text"], "risky": r["command"]["risky"]}
+        return None
     for r in history(data_dir, kind, limit=100000):
         if r["id"] == id_ and r["rerun"]:
             return {"text": r["rerun"], "risky": r["risky"]}
