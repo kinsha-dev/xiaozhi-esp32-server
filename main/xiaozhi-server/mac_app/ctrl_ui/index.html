@@ -27,12 +27,14 @@ button.act:hover{border-color:var(--acc)}
 .bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.rich{margin-top:8px;white-space:normal}.rcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.rimg{height:28px;max-width:100%;border-radius:6px;object-fit:contain}.rimgs{display:flex;flex-wrap:wrap;gap:6px}.rimgs img{max-height:180px;max-width:100%;border-radius:8px}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
 .bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
+#todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
+#todos td:first-child,#todos td.x{width:1%;white-space:nowrap}#todos td.tx{word-break:break-word}#todos td.done{color:var(--mut);text-decoration:line-through}#todos td.done .meta{text-decoration:none;display:inline-block;width:100%}#todos h2{margin:20px 0 4px}
 @media(max-width:600px){td.d{display:none}}
 </style></head><body>
 <header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
-const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["chat","Chat"],["board","Message board"],["components","Components"]];
+const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["chat","Chat"],["todo","Todo"],["board","Message board"],["components","Components"]];
 let tab=(TABS.find(x=>x[0]==location.hash.slice(1))||[])[0]||localStorage.getItem("vctrlTab")||"actions",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
@@ -48,7 +50,7 @@ function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onl
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
  {id:"root",component:"Column",children:["feed","form"]},
  {id:"form",component:"Row",align:"end",children:["to","text","fileBtn","fileName","send"]},
- {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"}]},
+ {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"}]},
  {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
  {id:"fileBtn",component:"Button",child:"fileLbl",action:{event:{name:"pick_file"}}},
  {id:"fileLbl",component:"Text",text:"📎 File"},
@@ -58,11 +60,11 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
  {id:"bubble",component:"ChatBubble",meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},messages:[]}}};
-const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
+const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 function chatMessagesUpdate(m){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
   for(const r of m.filter(r=>CHAT_NAMES[r.source]).slice().reverse()){const who=CHAT_NAMES[r.source],body=r.body||r.summary||"",bad=r.status=="failed"?"error":"reply";
-    if(r.source=="Gemini"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
-      if(q){out.push({meta:`You → Gemini · ${r.time}`,text:q[1],variant:"me"},{meta:`Gemini · ${r.time}`,text:q[2],variant:bad});continue}}
+    if(r.source=="Gemini"||r.source=="Todo"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
+      if(q){out.push({meta:`You → ${who} · ${r.time}`,text:q[1],variant:"me"},{meta:`${who} · ${r.time}`,text:q[2],variant:bad});continue}}
     out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
   if(!out.length)out.push({meta:"",text:"No conversation yet. Pick Claude, Grok or Gemini above and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
@@ -125,18 +127,34 @@ chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",
 A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="pick_file"){chatFile.click();return}
   if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
-  if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
+  if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||r.note||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
   if(name!="send_chat")return;
   const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";sf.watch.forEach(f=>f());
-  toast(r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
+  toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.mount("chat",$("#chatHost"))}
   A2ui.process(chatMessagesUpdate(await api("/api/messages?hours=72")))}
+/* ---- Todo tab: data/todos.jsonl, also written by the voice tools and the Chat tab; polled every 2 s so those show up live.
+   The form is built once and only the list is redrawn, and only when it changed, so typing is never interrupted. ---- */
+let todoSeq=0;
+const todoRow=t=>`<tr><td><input type="checkbox" data-id="${esc(t.id)}" ${t.done?"checked":""} aria-label="${t.done?"Reopen":"Mark done"}: ${esc(t.text)}"></td><td class="tx${t.done?" done":""}">${esc(t.text)}<div class="meta">${esc([t.source,t.done?"done "+t.done_at.slice(0,16):t.created.slice(0,16)].filter(Boolean).join(" · "))}</div></td><td class="x"><button class="act" data-del="${esc(t.id)}">Delete</button></td></tr>`;
+function todoShell(){if($("#todos"))return;
+  $("#main").innerHTML='<form id="todoForm"><input id="todoText" maxlength="500" autocomplete="off" placeholder="Add a todo…" aria-label="New todo"><button class="act pri">Add</button></form><div id="todos"></div>';
+  $("#todoForm").onsubmit=async e=>{e.preventDefault();const i=$("#todoText"),text=i.value.trim();if(text&&await todoOp({op:"add",text}))i.value=""};
+  $("#todos").onchange=e=>{const id=e.target.dataset.id;if(id)todoOp({op:e.target.checked?"done":"reopen",id})};
+  $("#todos").onclick=e=>{const id=e.target.dataset.del;if(id&&confirm("Delete this todo?"))todoOp({op:"delete",id})}}
+async function todoOp(body){const r=await api("/api/todos",body);if(r.error)toast(r.error);const box=$("#todos");if(box)delete box.dataset.v;await loadTodos();return!r.error}
+async function loadTodos(){const seq=++todoSeq;todoShell();const r=await api("/api/todos"),box=$("#todos");
+  if(tab!="todo"||seq!=todoSeq||!box)return;const v=JSON.stringify(r);if(box.dataset.v==v)return;box.dataset.v=v;
+  if(r.error){box.innerHTML=`<div class="empty">${esc(r.error)}</div>`;return}
+  const open=r.todos.filter(t=>!t.done).reverse(),done=r.todos.filter(t=>t.done).sort((a,b)=>b.done_at.localeCompare(a.done_at));
+  box.innerHTML=(open.length?`<table>${open.map(todoRow).join("")}</table>`:'<div class="empty">No open todos. Add one here, say “add a todo …” to Vibi, or send it from the Chat tab.</div>')+(done.length?`<h2 class="meta">Done (${done.length})</h2><table>${done.map(todoRow).join("")}</table>`:"")}
 async function load(){
   document.body.classList.toggle("chat",tab=="chat");
   if(tab=="chat")return loadChat();
+  if(tab=="todo")return loadTodos();
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
   if(tab=="board"){const all=window.boardAll||false,m=await api("/api/messages?hours="+(all?0:48)),bar=`<p class="meta">${all?"All messages":"Last 48 hours"} · <a href="#" onclick="boardAll=!boardAll;load();return false">${all?"Show last 48 hours":"Show all"}</a></p>`;
@@ -154,5 +172,5 @@ async function loadStealth(){const r=await api("/api/stealth");$("#stealth").che
 async function setStealth(on){const r=await api("/api/stealth",{on});toast(on?"Stealth on: no mic, no voice. Type commands in the Chat tab.":"Stealth off");$("#stealth").checked=!!r.on}
 async function loadStyle(){const s=await api("/api/style");$("#style").innerHTML=s.styles.map(x=>`<option ${x==s.style?"selected":""}>${x}</option>`).join("")}
 async function setStyle(v){const r=await api("/api/style",{style:v});toast("Voice style: "+r.style+(r.error?" ("+r.error+")":""))}
-nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
+nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden&&tab!="todo")load()},5000);setInterval(()=>{if(!document.hidden&&tab=="todo")loadTodos()},2000);
 </script></body></html>

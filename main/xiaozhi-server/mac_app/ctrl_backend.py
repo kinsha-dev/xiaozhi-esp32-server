@@ -200,6 +200,64 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
     return {"id": mid, "to": to}
 
 
+# --- todos (shared with the voice tools through data/todos.jsonl) ----------------------------------
+def _todo_store(data_dir: Path):
+    return _load_module("vibi_todo_store", data_dir, "VIBI_TODO_STORE", "todo_store.py")
+
+
+def _need_todo_store(data_dir: Path):
+    store = _todo_store(data_dir)
+    if store is None:
+        raise ValueError("Todos are not available: update the voice note box repo")
+    return store
+
+
+def todos(data_dir: Path) -> list:
+    return _need_todo_store(data_dir).todos(data_dir)
+
+
+def todo_op(data_dir: Path, op: str, text: str = "", id_: str = "") -> dict:
+    """One change from the Todo tab. ValueError for bad input, KeyError for an unknown id."""
+    store = _need_todo_store(data_dir)
+    if op == "add":
+        return store.add(data_dir, text, source="panel")
+    if op in ("done", "reopen"):
+        return store.set_done(data_dir, id_, op == "done")
+    if op == "delete":
+        return store.delete(data_dir, id_)
+    raise ValueError("unknown todo operation")
+
+
+def todo_chat(data_dir: Path, to: str, text: str, file=None):
+    """A Chat tab message that is for the todo list: anything sent to "Todo list", a todo command typed to Vibi ("add a
+    todo ...") or "todo: ..." to Claude / Grok / Gemini. Handled here (no agent involved) and the reply is filed on the
+    board. Returns None for every other message."""
+    to, text = (to or "").lower(), (text or "").strip()
+    if to == "todo":
+        store = _need_todo_store(data_dir)
+        if file:
+            raise ValueError("files can't be added to a todo")
+        if not text or len(text) > CHAT_LIMIT:
+            raise ValueError("empty or too long")
+        command = store.parse_command(text) or ("add", text)
+    else:
+        explicit = to in CHAT_TARGETS and re.match(r"to-?do\s*:", text, re.I)
+        if file or not (to == "vibi" or explicit):
+            return None
+        store = _todo_store(data_dir)
+        command = store.parse_command(text) if store else None
+        if command is None:
+            return None
+    reply = store.run_command(data_dir, command, source="chat")
+    board = _load_module("vibi_message_board", data_dir, "VIBI_MESSAGE_BOARD", "message_board.py")
+    if board is not None:
+        try:
+            board.post_message(f"Q: {text}\n\nA: {reply}", Path(data_dir), source="Todo", channel="todo")
+        except (OSError, ValueError):
+            pass  # the todo is saved; only the chat history line is missing
+    return {"id": "", "to": "todo", "note": reply}
+
+
 def history(data_dir: Path, kind: str, limit: int = 100) -> list:
     d = Path(data_dir)
     rows = []

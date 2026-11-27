@@ -13,6 +13,21 @@ Env: `MAC_APP_SERVER` (default `ws://127.0.0.1:8000/xiaozhi/v1/`), `MAC_APP_WAKE
 
 Tests: `python -m pytest mac_app/tests` (kept out of `tests/`: its conftest stubs `asyncio.sleep`).
 
+## Vibi Ctrl: Todo tab
+
+Lists, adds, completes, reopens and deletes todos, and picks up changes every 2 s. The list is `data/todos.jsonl` in the
+voice box repo, read and written through its `server/todo_store.py` (shared with the voice tools). Ways in:
+
+- **Voice** (board or Mac): "add a todo ...", "what's on my todo list", "mark the todo ... done". Setup, once the voice
+  box repo has `server/plugin/todos.py`: link it with
+  `ln -s ~/esp/voice-note-box/server/plugin/todos.py plugins_func/functions/todos.py`, add `todos` under
+  `Intent.function_call.functions` in `data/.config.yaml`, and restart the voice server. (`scripts/install.sh` there
+  also makes the link.)
+- **Chat tab:** send to *Todo list*, type a todo command to *Vibi*, or start a message to Claude / Grok / Gemini with
+  `todo:`. These are handled by the panel itself and answered at once.
+
+Tests: `mac_app/tests/test_todo_tab.py` (`VIBI_TODO_STORE` points it at another voice box checkout).
+
 ## Vibi Ctrl remote access (tunnel) and passkeys
 
 Menu: **Remote tunnel: off/on** (click to start/stop; shows the hostname) and **Copy remote link**.
