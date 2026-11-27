@@ -46,7 +46,25 @@ class CtrlPanel:
         if query.get("t") != self.token:
             return 403, "application/json", b'{"error":"forbidden"}'
         try:
-            if path == "/api/history" and method == "GET":
+            if path == "/api/chat" and method == "POST":
+                try:
+                    todo = be.todo_chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")), body.get("file"))
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
+                if todo:
+                    return 200, "application/json", json.dumps(todo).encode()
+            if path == "/api/todos":
+                try:
+                    if method == "POST":
+                        data = {"todo": be.todo_op(self.data_dir, str(body.get("op", "")), str(body.get("text", "")),
+                                                   str(body.get("id", "")))}
+                    else:
+                        data = {"todos": be.todos(self.data_dir)}
+                except KeyError:
+                    return 404, "application/json", b'{"error":"no such todo"}'
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
+            elif path == "/api/history" and method == "GET":
                 data = be.history(self.data_dir, query.get("kind", "actions"))
             elif path == "/api/messages" and method == "GET":
                 try:
