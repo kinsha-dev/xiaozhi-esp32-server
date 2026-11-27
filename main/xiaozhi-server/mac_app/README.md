@@ -39,6 +39,13 @@ Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in 
 "asks first" and Rerun; actions run for no command (schedules, tasks, CLI) stand on their own. Old `#actions` links open
 Chat. The floating **Filter** button holds type (including "Actions"), action, voice / typed, direction and time.
 
+**Paste:** ⌘V (or the 📋 Paste button) puts text in the message box; a screenshot, image or copied file becomes the
+attachment (one, 5 MB max). Files can't go to Computer use or the Todo list.
+
+**Progress and failures:** a typed command shows "Waiting for Vibi…" until it is answered, a computer task shows its step
+count, and its result arrives as a Computer use entry. When nothing comes back the entry says why (for example the voice
+server did not answer within 30 s, so nothing ran); a reply is never left empty.
+
 **Commands** (the former Commands tab): each command entry has **Read** and, for voice and typed commands, **Rerun**.
 Read shows the command, its status and result, and reads them aloud in the browser you are using (silent when Stealth is
 on; the board does not speak). Rerun replays it as a voice request, asks first when it is risky, and Vibi's spoken yes

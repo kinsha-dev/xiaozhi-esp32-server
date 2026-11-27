@@ -297,6 +297,22 @@ def note_typed(data_dir: Path, to: str, text: str):
         pass  # only the voice / typed label is lost
 
 
+PENDING = "typed_pending.json"
+
+
+def set_pending(data_dir: Path, text, done=None):
+    """Note the typed command that is waiting for its answer (None clears it, only if it is still `done`)."""
+    path = Path(data_dir) / PENDING
+    if text is not None:
+        path.write_text(json.dumps({"text": text, "since": time.time()}))
+    elif done is None or (pending_typed(data_dir) or {}).get("text") == done:
+        path.unlink(missing_ok=True)
+
+
+def pending_typed(data_dir: Path):
+    return ctrl_voice.pending_typed(Path(data_dir))
+
+
 def _todo_store(data_dir: Path):
     return _load_module("vibi_todo_store", data_dir, "VIBI_TODO_STORE", "todo_store.py")
 
