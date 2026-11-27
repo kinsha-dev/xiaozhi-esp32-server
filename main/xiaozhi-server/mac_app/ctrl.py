@@ -71,7 +71,9 @@ class CtrlPanel:
                     hours = float(query.get("hours", 48))
                 except ValueError:
                     hours = 48
-                data = be.messages(self.data_dir, hours=hours)
+                data = be.messages(self.data_dir, hours=hours, type=query.get("type", "all"),
+                                   direction=query.get("direction", "all"), input=query.get("input", "all"),
+                                   action=query.get("action", "recognized"))
             elif path == "/api/stealth" and method == "GET":
                 data = {"on": (self.data_dir / "stealth").exists()}
             elif path == "/api/stealth" and method == "POST":
@@ -85,9 +87,10 @@ class CtrlPanel:
                 text = " ".join(str(body.get("text", "")).split())
                 if not text or len(text) > be.CHAT_LIMIT:
                     return 400, "application/json", b'{"error":"empty or too long"}'
-                # A typed command to Vibi itself: runs like a spoken one, silently in Stealth (reply lands on the board).
+                # A typed command to Vibi itself: runs like a spoken one, silently in Stealth (reply shows in Chat).
                 if not self._rerun(text):
                     return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
+                be.note_typed(self.data_dir, "vibi", text)
                 data = {"id": "", "to": "vibi"}
             elif path == "/api/chat" and method == "POST" and body.get("to") == "computer":
                 text = " ".join(str(body.get("text", "")).split())
@@ -96,6 +99,7 @@ class CtrlPanel:
                 # Replayed as a voice request, so Vibi's usual spoken yes applies to anything that sends, buys, deletes or logs in.
                 if not self._rerun(f"Use the computer to {text}"):
                     return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
+                be.note_typed(self.data_dir, "computer", text)
                 data = {"id": "", "to": "computer", "note": "Vibi will ask you out loud before anything risky."}
             elif path == "/api/chat" and method == "POST":
                 try:
@@ -128,6 +132,8 @@ class CtrlPanel:
         if not item:
             return {"ok": False, "error": "nothing to replay for this entry"}
         ok = self._rerun(item["text"])
+        if ok:
+            be.note_typed(self.data_dir, "rerun", item["text"])
         note = ("Replayed as a voice request: Vibi will ask you to confirm out loud before doing it."
                 if item["risky"] else "Replayed as a voice request.")
         return {"ok": bool(ok), "risky": item["risky"], "note": note if ok else "Could not start a session (busy or muted)."}

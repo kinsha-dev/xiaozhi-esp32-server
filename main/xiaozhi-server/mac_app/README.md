@@ -28,9 +28,32 @@ voice box repo, read and written through its `server/todo_store.py` (shared with
 
 Tests: `mac_app/tests/test_todo_tab.py` (`VIBI_TODO_STORE` points it at another voice box checkout).
 
+## Chat tab: one timeline
+
+The Message board tab is merged into **Chat**: every conversation and feed (Claude, Grok Bot, Gemini, Computer use,
+Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in time order. Filter by message type
+("Conversations" = the first six), direction (to or from Vibi) and time range (last 72 hours or all time); the newest
+300 matches are shown and the choice is remembered. Long feed items start collapsed. Old `#board` links open Chat.
+
+**Actions** (the former Actions tab) thread under the voice or typed command they ran for, with status, details,
+"asks first" and Rerun; actions run for no command (schedules, tasks, CLI) stand on their own. Old `#actions` links open
+Chat. The floating **Filter** button holds type (including "Actions"), action, voice / typed, direction and time.
+
+**Action: recognized** (the default) shows voice commands that were acted on: the server recorded that the speech went to
+the model or ran a tool, and a tool ran or Vibi gave a real reply. **Unrecognized** shows the rest: ignored or misheard
+speech, "didn't catch that" replies (matched on wording), and wake / bye chatter, with any actions they ran. **All** shows
+both. Typed turns and non-voice rows always count as recognized.
+
+**Voice and typed turns** are in the timeline too, labelled and filterable: what Vibi heard or you typed, its replies,
+announcements and reminders. They come from `data/history.jsonl`, `data/memory/conversations.jsonl` and the outbox.
+Replies appear as they are given once the voice server runs this version (it logs `reply` rows); before that, only when a
+conversation ends. Not recorded: audio that is not put into the dialogue (music, TV and tone playback, some error or
+filler lines), what the board or Mac says on its own without the server, and replies in Chinese. Replies from before
+this version exist only for conversations the memory kept (at least one user turn and one other).
+
 ## Replying to one response
 
-In **Chat** or **Message board**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply
+In **Chat**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply
 menu: the quoted response, a text box, and a recipient (Claude, Grok Bot, Gemini or Computer use; preselected to the sender, Claude for
 Vibi). The reply goes through `/api/chat` with up to 1000 characters of the quote in front as context. Enter sends,
 Shift+Enter adds a line, Escape cancels.

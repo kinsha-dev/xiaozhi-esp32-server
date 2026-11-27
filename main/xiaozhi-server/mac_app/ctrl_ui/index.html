@@ -11,7 +11,9 @@ nav button{border:0;background:none;color:var(--mut);padding:6px 12px;border-rad
 nav button.on{background:var(--card);color:var(--fg);font-weight:600}
 main{padding:16px 20px;max-width:980px;margin:auto}
 body.chat{height:100dvh;display:flex;flex-direction:column;overflow:hidden}body.chat header{position:static}body.chat main{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding-bottom:10px}
-#chatHost{flex:1;min-height:0}#chatHost>div{height:100%}#chatHost>div>div:last-child{padding-top:10px;border-top:1px solid var(--line)}
+#chatHost{flex:1;min-height:0;position:relative}#fbtn{position:absolute;top:4px;right:14px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#chatHost>div>div:first-child{position:absolute;top:40px;right:14px;z-index:5;flex-direction:column!important;align-items:stretch!important;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,.3)}#chatHost:not(.fopen)>div>div:first-child{display:none!important}
+.thread{display:flex;flex-direction:column;gap:4px;max-width:78%;flex:none}.thread.child{align-self:flex-end;margin-top:-6px;margin-right:12px;border-right:2px solid var(--line);padding-right:8px}.action{background:var(--card);border-radius:10px;padding:5px 10px;font-size:12px}.ahead{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ahead button.act{padding:1px 8px}.adetail{color:var(--mut);word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.adetail.open{display:block;white-space:pre-wrap}#chatHost>div{height:100%}#chatHost>div>div:last-child{padding-top:10px;border-top:1px solid var(--line)}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:12px}td.t{white-space:nowrap;color:var(--mut)}td.d{color:var(--mut);font-size:12px;word-break:break-word}
 .pill{padding:1px 8px;border-radius:99px;font-size:12px;background:var(--card)}.ok{color:var(--ok)}.error,.bad{color:var(--bad)}.warn{color:var(--warn)}
@@ -23,10 +25,10 @@ button.act:hover{border-color:var(--acc)}
 .err{color:var(--bad);font-size:12px;margin-top:6px;word-break:break-word}.meta{color:var(--mut);font-size:12px}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:10px;display:none}
 .empty{color:var(--mut);padding:24px;text-align:center}
-.chatfeed{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px;flex:1;min-height:0;overflow-y:auto}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
-.bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.rich{margin-top:8px;white-space:normal}.rcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.rimg{height:28px;max-width:100%;border-radius:6px;object-fit:contain}.rimgs{display:flex;flex-wrap:wrap;gap:6px}.rimgs img{max-height:180px;max-width:100%;border-radius:8px}
+.chatfeed{display:flex;flex-direction:column;gap:10px;padding:38px 0 12px;flex:1;min-height:0;overflow-y:auto}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
+.bub.other{border:1px solid var(--line);background:none}.clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}.bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.rich{margin-top:8px;white-space:normal}.rcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.rimg{height:28px;max-width:100%;border-radius:6px;object-fit:contain}.rimgs{display:flex;flex-wrap:wrap;gap:6px}.rimgs img{max-height:180px;max-width:100%;border-radius:8px}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
-.canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}tr.canreply.sel{background:var(--card)}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
+.canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
 .replybox{white-space:normal;cursor:auto;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}.bub.sel{width:min(480px,92%);max-width:92%}.replybox>div>div:last-child{flex-wrap:wrap}.replybox button{white-space:nowrap}.replybox textarea{min-width:0!important}.replybox .meta{border-left:3px solid var(--acc);padding-left:8px;white-space:pre-wrap;max-height:64px;overflow:hidden}
 .bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
 #todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
@@ -36,21 +38,26 @@ button.act:hover{border-color:var(--acc)}
 <header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
-const T="__TOKEN__",TABS=[["actions","Actions"],["commands","Commands"],["notes","Notes"],["chat","Chat"],["todo","Todo"],["board","Message board"],["components","Components"]];
-let tab=(TABS.find(x=>x[0]==location.hash.slice(1))||[])[0]||localStorage.getItem("vctrlTab")||"actions",timer;
+const T="__TOKEN__",TABS=[["chat","Chat"],["commands","Commands"],["notes","Notes"],["todo","Todo"],["components","Components"]];
+const OLD_TABS={board:"chat",actions:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board and #actions links open Chat
+let tab=tabKey(location.hash.slice(1))||tabKey(localStorage.getItem("vctrlTab"))||"chat",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
 function nav(){$("#nav").innerHTML=TABS.map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
 function go(k){tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
-function boardShell(){if(!$("#feed"))$("#main").innerHTML='<div id="feed"></div>';return $("#feed")}
-function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
 
 /* ---- Chat tab: an A2UI v1.0 surface (https://a2ui.org). The "agent" side below emits createSurface / updateDataModel messages
    (flat component list, @path bindings, event actions, list template); A2ui renders them with this page's own components.
    Catalog: the basic catalog (Column, Row, List, Text, TextField, ChoicePicker, Button) plus one custom component, ChatBubble. ---- */
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
- {id:"root",component:"Column",children:["feed","form"]},
+ {id:"root",component:"Column",children:["filters","feed","form"]},
+ {id:"filters",component:"Row",align:"center",children:["fType","fAct","fInput","fDir","fRange"]},
+ {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
+ {id:"fAct",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Action",value:{"@path":"/filter/action"},action:{event:{name:"filter"}},options:[{label:"Action: recognized",value:"recognized"},{label:"Action: unrecognized",value:"unrecognized"},{label:"Action: all",value:"all"}]},
+ {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
+ {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
+ {id:"fRange",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Time range",value:{"@path":"/filter/hours"},action:{event:{name:"filter"}},options:[{label:"Last 72 hours",value:"72"},{label:"All time",value:"0"}]},
  {id:"form",component:"Row",align:"end",children:["to","text","fileBtn","fileName","send"]},
  {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"}]},
  {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
@@ -60,17 +67,23 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"}}],
- dataModel:{chat:{to:["claude"],text:"",fileName:""},messages:[]}}};
-const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
-function chatMessagesUpdate(m){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
-  for(const r of m.filter(r=>CHAT_NAMES[r.source]).slice().reverse()){const who=CHAT_NAMES[r.source],body=r.body||r.summary||"",bad=r.status=="failed"?"error":"reply";
-    if(r.source=="Gemini"||r.source=="Todo"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
-      if(q){out.push({meta:`You → ${who} · ${r.time}`,text:q[1],variant:"me"},{meta:`${who} · ${r.time}`,text:q[2],variant:bad,reply:replyTarget(r,q[2])});continue}}
-    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.source=="Claude"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
-  if(!out.length)out.push({meta:"",text:"No conversation yet. Pick Claude, Grok or Gemini above and send a message.",variant:"note"});
+ {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"}}],
+ dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
+const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
+const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
+function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
+  for(const r of m.slice().reverse()){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
+    const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>p.filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
+    if(r.channel=="action"){out.push({variant:"actions",actions:acts});continue}
+    if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
+      if(q){if(direction!="to"){out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me"});if(acts)out.push({variant:"thread",actions:acts})}if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});continue}}
+    const extra={...(CLAMPED.includes(r.type)?{clamp:String(r.id)}:{}),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})};
+    const status=r.source=="Claude"&&r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status;
+    out.push(r.direction=="from"?{meta:line(`You → ${who}`,r.time,status,r.input,missed),text:body,variant:"me",...extra}:{meta:line(r.category,r.time,r.status,how,missed),text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...extra});
+    if(acts)out.push({variant:"thread",actions:acts})}
+  if(!out.length)out.push({meta:"",text:"No messages match. Change the filters, or pick Claude, Grok or Gemini below and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
-/* ---- Reply menu: select one response (Chat bubble or Message board row) and answer it. The menu is its own A2UI surface;
+/* ---- Reply menu: select one response (a Chat bubble) and answer it. The menu is its own A2UI surface;
    the reply goes through /api/chat with the quoted response in front as context. One menu is open at a time, and its element
    is moved back under the selected response after each redraw, so a half-typed reply survives the 5 s refresh. ---- */
 const REPLY_FROM={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Vibi":"Vibi"},QUOTE_MAX=1000,CHAT_MAX=4000;
@@ -91,11 +104,10 @@ const Reply={target:null,el:null,busy:false,
    this.el?.remove();this.el=document.createElement("div");this.el.className="replybox";A2ui.mount("reply",this.el);
    this.el.onkeydown=e=>{if(e.key=="Escape")this.close()}}
   this.place();this.el.querySelector("textarea")?.focus()},
- close(){this.target=null;this.el?.closest("tr.replyrow")?.remove();this.el?.remove();this.el=null;this.mark()},
+ close(){this.target=null;this.el?.remove();this.el=null;this.mark()},
  mark(){document.querySelectorAll(".canreply").forEach(n=>n.classList.toggle("sel",n.dataset.key==this.target?.key))},
- place(){const host=this.target&&[...document.querySelectorAll(".canreply")].find(n=>n.dataset.key==this.target.key);this.mark();if(!host)return;
-  if(host.tagName=="TR"){if(host.nextElementSibling?.contains(this.el))return;this.el.closest("tr.replyrow")?.remove();const tr=document.createElement("tr"),td=document.createElement("td");tr.className="replyrow";td.colSpan=host.children.length;td.append(this.el);tr.append(td);host.after(tr)}
-  else if(this.el.parentNode!=host){host.append(this.el);this.el.scrollIntoView({block:"nearest"})}},
+ place(){const host=this.target&&[...document.querySelectorAll(".canreply")].find(n=>n.dataset.key==this.target.key);this.mark();
+  if(host&&this.el.parentNode!=host){host.append(this.el);this.el.scrollIntoView({block:"nearest"})}},
  keep(redraw){const f=document.activeElement,had=this.el?.contains(f);redraw();if(this.target){this.place();if(had&&this.el.isConnected)f.focus({preventScroll:true})}},
  attach(n,t){n.classList.add("canreply");n.dataset.key=t.key;n.onclick=e=>{if(e.target.closest("a,button,select,textarea,input,.replybox")||String(getSelection()))return;this.target?.key==t.key?this.close():this.open(t)}},
  button(t){const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent="↩ Reply";b.setAttribute("aria-label",`Reply to ${t.who}, ${t.time}`);b.onclick=()=>this.open(t);return b},
@@ -109,6 +121,12 @@ const Reply={target:null,el:null,busy:false,
   this.busy=true;try{const r=await api("/api/chat",{to,text:full});if(r.error){toast(r.error);return}
    if(this.target===t)this.close();A2ui.stick=true;toast(to=="computer"?"Sent to computer use. "+r.note:r.note||(to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude")));load()}
   catch(e){toast("Could not send the reply")}finally{this.busy=false}}};
+/* One action under (or without) its command: everything the Actions tab showed, with its Rerun button. */
+function actionItem(a,expanded){const el=document.createElement("div"),tone=a.status=="error"?"error":a.status=="ok"||a.status=="done"?"ok":"";el.className="action";
+  el.innerHTML=`<div class="ahead"><b>${esc(a.title)}</b><span class="pill ${tone}">${esc(a.status)}</span>${a.risky?'<span class="pill warn">asks first</span>':""}<span class="meta">${esc([a.source,a.time].filter(Boolean).join(" · "))}</span></div>`+(a.detail?`<div class="adetail">${esc(a.detail)}</div>`:"");
+  const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="act";b.textContent=text;b.onclick=run;el.firstChild.append(b);return b};
+  if(a.detail.length>120){const key="action-"+a.id,more=button("",()=>{expanded.has(key)?expanded.delete(key):expanded.add(key);show()}),show=()=>{const open=expanded.has(key);el.lastChild.classList.toggle("open",open);more.textContent=open?"Less":"Details"};show()}
+  if(a.rerun)button("Rerun",()=>rerun(a.id,a.risky,"actions"));return el}
 /* Rich answers: an optional A2UI surface (`ui`) from the bot is untrusted. It is cut down again here (whitelisted components,
    http(s) URLs only, Button events limited to reply / open_url) and drawn with the same renderer; unknown components become Text. */
 const RICH_OK=new Set(["Column","Row","List","Card","Tabs","Divider","Text","Image","Icon","Button","Badge"]),httpUrl=u=>typeof u=="string"&&/^https?:\/\/\S+$/i.test(u)&&u.length<2048?u:"";
@@ -120,7 +138,7 @@ function cleanRich(r,to){if(!r||typeof r!="object"||!Array.isArray(r.components)
     comps[c.id]=c}
   if(!comps.root)return null;let data={};try{data=JSON.parse(JSON.stringify(r.dataModel&&typeof r.dataModel=="object"?r.dataModel:{}))}catch(e){}
   return{comps,data,watch:[],to:["claude","grok","gemini"].includes(to)?to:"grok"}}
-const A2ui={surfaces:{},onEvent:null,
+const A2ui={surfaces:{},onEvent:null,expanded:new Set(),
  process(msg){const c=msg.createSurface;if(c){this.surfaces[c.surfaceId]={comps:Object.fromEntries(c.components.map(x=>[x.id,x])),data:c.dataModel||{},watch:[]};return}
   const u=msg.updateDataModel;if(u){const sf=this.surfaces[u.surfaceId];this.set(sf,u.path,u.value);this.refresh(sf)}},
  refresh(sf){Reply.keep(()=>sf.watch.forEach(f=>f()))},  // a redraw rebuilds bubbles; keep() puts the open reply menu back
@@ -138,8 +156,9 @@ const A2ui={surfaces:{},onEvent:null,
       const atEnd=isFeed&&el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
       sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length,fill=()=>el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));fill();own=sf.watch.slice(n);if(isFeed&&(first||atEnd||me.stick)){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
    case"Text":bind(()=>{el.textContent=v(c.text)??"";el.className=c.variant=="caption"?"meta":""});break;
-   case"ChatBubble":bind(()=>{const k=v(c.variant);el.className="bub "+(k=="me"?"me":k=="error"?"bad":k=="note"?"note":"");
-      el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+esc(v(c.text));
+   case"ChatBubble":bind(()=>{const k=v(c.variant);if(k=="thread"||k=="actions"){el.className="thread"+(k=="thread"?" child":"");el.replaceChildren(...(v(c.actions)||[]).map(a=>actionItem(a,me.expanded)));return}el.className="bub "+({me:"me",error:"bad",note:"note",other:"other"}[k]||"");
+      el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+`<div class="body">${esc(v(c.text))}</div>`;
+      const long=v(c.clamp),words=String(v(c.text)??"");if(long&&(words.length>400||words.split("\n").length>6)){const d=el.querySelector(".body"),b=document.createElement("button"),show=()=>{const open=me.expanded.has(long);d.classList.toggle("clamp",!open);b.textContent=open?"Collapse":"Expand"};b.type="button";b.className="rbtn";b.onclick=()=>{me.expanded.has(long)?me.expanded.delete(long):me.expanded.add(long);show()};show();el.append(b)}
       const rich=cleanRich(v(c.rich),v(c.to));if(rich){const h=document.createElement("div");h.className="rich";h.append(me.node(rich,"root",""));el.append(h)}
       const ims=(Array.isArray(v(c.images))?v(c.images):[]).map(httpUrl).filter(Boolean).slice(0,8),lks=(Array.isArray(v(c.links))?v(c.links):[]).filter(l=>l&&httpUrl(l.url)).slice(0,8);
       if(ims.length){const h=document.createElement("div");h.className="rich rimgs";for(const u of ims){const im=document.createElement("img");im.src=u;im.alt="";im.referrerPolicy="no-referrer";im.loading="lazy";h.append(im)}el.append(h)}
@@ -159,7 +178,7 @@ const A2ui={surfaces:{},onEvent:null,
       bind(()=>{const x=v(c.value)??"";if(i.value!==x){i.value=x;fit()}});el.append(i);break}
    case"ChoicePicker":{const s=document.createElement("select");s.className="act";s.style.font="inherit";s.setAttribute("aria-label",v(c.label)||"");
       s.innerHTML=c.options.map(o=>`<option value="${esc(o.value)}">${esc(v(o.label))}</option>`).join("");
-      s.onchange=()=>me.set(sf,c.value["@path"],[s.value]);bind(()=>{s.value=(v(c.value)||[])[0]??""});el.append(s);break}
+      s.onchange=()=>{me.set(sf,c.value["@path"],[s.value]);if(c.action)me.fire(sf,cid,scope)};bind(()=>{s.value=(v(c.value)||[])[0]??""});el.append(s);break}
    case"Button":{const b=document.createElement("button");b.className="act"+(c.variant=="primary"?" pri":"");b.type="button";b.append(me.node(sf,c.child,scope).firstChild||"");
       b.onclick=()=>me.fire(sf,cid,scope);el.append(b);break}}
   return el.style.cssText||el.className||el.childNodes.length?el:el},
@@ -167,9 +186,12 @@ const A2ui={surfaces:{},onEvent:null,
 function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
 const chatFile=Object.assign(document.createElement("input"),{type:"file",style:"display:none"});
 chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",chatFile.files[0]?.name||"");A2ui.refresh(sf)};
+document.addEventListener("click",e=>{if(!e.target.closest("#fbtn,#chatHost>div>div:first-child"))filterOpen(false)});
+document.addEventListener("keydown",e=>{if(e.key=="Escape")filterOpen(false)});
 A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="send_reply")return Reply.send(ctx);
   if(name=="cancel_reply")return Reply.close();
+  if(name=="filter"){try{localStorage.setItem("vctrlFilter",JSON.stringify(sf.data.filter))}catch(e){}Reply.close();filterButton();A2ui.stick=true;return loadChat()}
   if(name=="pick_file"){chatFile.click();return}
   if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
   if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||r.note||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
@@ -178,9 +200,16 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
-  toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
-async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.mount("chat",$("#chatHost"))}
-  A2ui.process(chatMessagesUpdate(await api("/api/messages?hours=72")))}
+  toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
+let chatSeq=0;
+const defaultFilter=()=>({type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]});
+function filterButton(){const b=$("#fbtn"),f=A2ui.surfaces.chat.data.filter,d=defaultFilter(),n=Object.keys(d).filter(k=>f[k][0]!=d[k][0]).length;if(!b)return;b.textContent="Filter"+(n?` (${n})`:"")}
+function filterOpen(on){$("#chatHost")?.classList.toggle("fopen",on);$("#fbtn")?.setAttribute("aria-expanded",on)}
+function savedFilter(){const f=defaultFilter();try{const s=JSON.parse(localStorage.getItem("vctrlFilter"));for(const k in f)if(typeof s?.[k]?.[0]=="string")f[k]=[s[k][0]]}catch(e){}return f}
+async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter=savedFilter();A2ui.mount("chat",$("#chatHost"));
+    const b=document.createElement("button");b.id="fbtn";b.type="button";b.className="act";b.onclick=()=>filterOpen(!$("#chatHost").classList.contains("fopen"));$("#chatHost").append(b);filterOpen(false);filterButton()}
+  const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],action:f.action[0],input:f.input[0],direction:f.direction[0],hours:f.hours[0]});
+  const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat")A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}
 /* ---- Todo tab: data/todos.jsonl, also written by the voice tools and the Chat tab; polled every 2 s so those show up live.
    The form is built once and only the list is redrawn, and only when it changed, so typing is never interrupted. ---- */
 let todoSeq=0;
@@ -202,16 +231,11 @@ async function load(){
   if(tab=="todo")return loadTodos();
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
-  if(tab=="board"){const all=window.boardAll||false,m=await api("/api/messages?hours="+(all?0:48)),bar=`<p class="meta">${all?"All messages":"Last 48 hours"} · <a href="#" onclick="boardAll=!boardAll;load();return false">${all?"Show last 48 hours":"Show all"}</a></p>`;
-    if(tab!="board")return;const html=bar+(m.length?'<table><tr><th>Time</th><th>Category</th><th></th><th>Message</th><th>Status</th></tr>'+m.map((r,i)=>`<tr data-i="${i}"><td class="t">${esc(r.time)}</td><td><span class="pill">${esc(r.category)}</span></td><td class="meta">${r.direction=="to"?"→ Vibi":"Vibi →"}</td>
-    <td>${esc(r.summary)}${r.body&&r.body!==r.summary?` <button class="act" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">Expand</button><div class="d" hidden style="white-space:pre-wrap;margin-top:6px">${esc(r.body)}</div>`:""}</td>
-    <td><span class="pill ${r.status=="failed"?"error":r.status=="done"||r.status=="answered"||r.status=="delivered"||r.status=="sent"?"ok":""}">${esc(r.status)}</span></td></tr>`).join("")+"</table>":'<div class="empty">No messages in this time range. Grok Bot, Claude, phone apps, WhatsApp and job-hunt results show up here.</div>'),box=boardShell();
-    if(box.html!==html){Reply.keep(()=>{box.innerHTML=box.html=html;box.querySelectorAll("tr[data-i]").forEach(tr=>{const r=m[tr.dataset.i],t=replyTarget(r,r.body||r.summary);if(t){Reply.attach(tr,t);tr.children[3].append(" ",Reply.button(t))}})})}else if(Reply.target)Reply.keep(()=>{});return}
   const rows=await api("/api/history?kind="+tab);
-  $("#main").innerHTML=rows.length?`<table><tr><th>Time</th><th>${tab=="actions"?"Action":"Entry"}</th><th>Status</th><th>Result</th><th></th></tr>`+rows.map(r=>`<tr><td class="t">${esc(r.time)}</td>
+  $("#main").innerHTML=rows.length?`<table><tr><th>Time</th><th>Entry</th><th>Status</th><th>Result</th><th></th></tr>`+rows.map(r=>`<tr><td class="t">${esc(r.time)}</td>
   <td>${esc(r.title)}${r.risky?' <span class="pill warn">asks first</span>':""}${r.source?`<div class="meta">${esc(r.source)}</div>`:""}</td><td><span class="pill ${r.status=="error"?"error":r.status=="ok"||r.status=="done"?"ok":""}">${esc(r.status)}</span></td>
   <td class="d">${esc(r.detail)}</td><td>${r.rerun?`<button class="act" onclick="rerun('${esc(r.id)}',${r.risky})">Rerun</button>`:""}</td></tr>`).join("")+"</table>":'<div class="empty">Nothing yet. New voice requests show up here.</div>'}
-async function rerun(id,risky){if(risky&&!confirm("This is a risky kind of action. Vibi will speak the details and wait for your spoken yes before doing anything. Continue?"))return;const r=await api("/api/rerun",{kind:tab,id});toast(r.note||r.error)}
+async function rerun(id,risky,kind=tab){if(risky&&!confirm("This is a risky kind of action. Vibi will speak the details and wait for your spoken yes before doing anything. Continue?"))return;const r=await api("/api/rerun",{kind,id});toast(r.note||r.error)}
 async function mute(on){await api("/api/mute",{on});toast(on?"Muted: board and Mac are off":"Unmuted");load()}
 async function restart(k,n){if(!confirm("Restart "+n+"?"))return;const r=await api("/api/restart",{key:k});toast(r.ok?(r.note||n+" restarting"):"Failed: "+r.error);setTimeout(load,3000)}
 async function loadStealth(){const r=await api("/api/stealth");$("#stealth").checked=!!r.on}

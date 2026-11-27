@@ -33,6 +33,7 @@ from core.handle.reportHandle import report, enqueue_tool_report
 from core.providers.tts.default import DefaultTTS
 from concurrent.futures import ThreadPoolExecutor
 from core.utils.dialogue import Message, Dialogue
+from core.utils.reply_log import log_reply
 from core.providers.asr.dto.dto import InterfaceType
 from core.handle.textHandle import handleTextMessage
 from core.providers.tools.unified_tool_handler import UnifiedToolHandler
@@ -165,6 +166,7 @@ class ConnectionHandler:
 
         # LLM state
         self.dialogue = Dialogue()
+        self.dialogue.on_put = log_reply  # replies show live in Vibi Ctrl's Chat tab
 
         # TTS state
         self.sentence_id = None

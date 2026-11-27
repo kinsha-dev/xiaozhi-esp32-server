@@ -25,11 +25,14 @@ class Message:
 class Dialogue:
     def __init__(self):
         self.dialogue: List[Message] = []
+        self.on_put = None  # optional observer, called with each message added
         # get the current time
         self.current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def put(self, message: Message):
         self.dialogue.append(message)
+        if self.on_put:
+            self.on_put(message)
 
     def getMessages(self, m, dialogue):
         if m.tool_calls is not None:

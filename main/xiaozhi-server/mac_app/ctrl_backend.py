@@ -12,6 +12,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from mac_app import ctrl_voice
+
 LABELS = {"server": "com.voicebox.server", "whisper": "com.voicebox.whisper", "macapp": "com.voicebox.macapp"}
 ERR_LINE = re.compile(r"(ERROR|Traceback|Exception|CRITICAL|Error:)")
 SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{32,}|(?:password|token|key)\s*[=:]\s*\S+)", re.I)
@@ -45,9 +47,40 @@ def _row(id_, ts, title, status="ok", detail="", risky=False, rerun=None, source
             "status": status, "detail": detail, "risky": risky, "rerun": rerun, "source": source}
 
 
-def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
+CONVERSATION_TYPES = ("claude", "grok", "gemini", "computer", "vibi", "todo")
+_SOURCE_TYPES = {"Claude": "claude", "Grok Bot": "grok", "Gemini": "gemini", "Vibi": "vibi", "Todo": "todo",
+                 "WhatsApp": "whatsapp", "Mail digest": "mail"}
+
+
+def message_type(row: dict) -> str:
+    """The Chat tab's type filter value for one board row."""
+    source, channel = str(row.get("source") or ""), str(row.get("channel") or "")
+    if channel == "action":
+        return str(row.get("type") or "vibi")
+    if channel == "computer-use":
+        return "computer"
+    if channel == "job-hunt":
+        return "jobs"
+    if source.startswith("Notifications"):
+        return "notifications"
+    return _SOURCE_TYPES.get(source, "other")
+
+
+def _has_direction(row: dict, direction: str) -> bool:
+    # a Gemini / Todo "Q: ... A: ..." row is both what was asked and the answer
+    both = (row.get("source") in ("Gemini", "Todo") and str(row.get("body")).startswith("Q: ")) or (
+        row.get("channel") == "typed" and str(row.get("body")).startswith("You: "))
+    return row.get("direction") == direction or both
+
+
+def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "all", direction: str = "all",
+             input: str = "all", action: str = "recognized") -> list:
     """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
-    category. Only the last `hours` hours (0 = everything). Read through the voice box repo's message_board module, found next to the data dir."""
+    category and a type. Only the last `hours` hours (0 = everything), filtered before the limit by `type` (a
+    message_type value, "conversation", "actions" = rows with actions, or "all"), `direction` ("to" Vibi, "from" you, or
+    "all"), `input` ("voice", "typed" or "all") and `action` ("recognized" leaves out unrecognized voice turns,
+    "unrecognized" shows only those, "all" both). Voice and typed turns, spoken replies, actions and announcements are
+    merged in (ctrl_voice). Read through the voice box repo's message_board module, found next to the data dir."""
     import importlib.util
 
     mod_path = Path(os.environ.get("VIBI_MESSAGE_BOARD") or Path(data_dir).parent / "server" / "message_board.py")
@@ -56,10 +89,25 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
     spec = importlib.util.spec_from_file_location("vibi_message_board", mod_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    rows = mod.messages(Path(data_dir))
+    rows = ctrl_voice.merge(Path(data_dir), mod.messages(Path(data_dir)))
     if hours and hours > 0:
         cutoff = time.time() - hours * 3600
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
+    rows = [{**r, "type": message_type(r)} for r in rows]
+    if type == "actions":
+        rows = [r for r in rows if r["actions"]]
+    elif type == "conversation":
+        rows = [r for r in rows if r["type"] in CONVERSATION_TYPES and r.get("channel") != "action"]
+    elif type != "all":
+        rows = [r for r in rows if r["type"] == type]
+    if action == "recognized":
+        rows = [r for r in rows if r["recognized"] is not False]
+    elif action == "unrecognized":
+        rows = [r for r in rows if r["recognized"] is False]
+    if input != "all":
+        rows = [r for r in rows if r["input"] == input]
+    if direction != "all":
+        rows = [r for r in rows if _has_direction(r, direction)]
     rows = rows[:limit]
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
@@ -83,7 +131,7 @@ def _load_module(name: str, data_dir: Path, env: str, rel: str):
 
 
 def save_upload(data_dir: Path, name: str, b64: str) -> Path:
-    """Store a file picked in the Message board under data/uploads/. Returns its path. ValueError if unusable."""
+    """Store a file picked in the Chat tab under data/uploads/. Returns its path. ValueError if unusable."""
     try:
         raw = base64.b64decode(b64 or "", validate=True)
     except (binascii.Error, ValueError):
@@ -180,9 +228,9 @@ def claude_listening() -> bool:
 
 
 def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
-    """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads), to the Grok Bot
+    """Send a typed message from the Chat tab: to Claude (the voice box inbox the listener reads), to the Grok Bot
     (a `task` request in data/grok/requests) or to Gemini (answered in the background, OpenRouter if Gemini fails; the answer
-    is posted on the board). Same file contracts the voice path uses, so replies show up on the board. `file` is
+    is posted on the board). Same file contracts the voice path uses, so replies show up in Chat. `file` is
     {"name", "data": base64}: saved under data/uploads/ and attached (Gemini reads it; Claude and Grok get its path)."""
     to, text = (to or "").lower(), (text or "").strip()
     if to not in CHAT_TARGETS:
@@ -227,6 +275,16 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
 
 
 # --- todos (shared with the voice tools through data/todos.jsonl) ----------------------------------
+def note_typed(data_dir: Path, to: str, text: str):
+    """Mark in the history log that this command came from the panel; the server logs it like a spoken one."""
+    try:
+        log = _load_module("vibi_history_log", data_dir, "VIBI_HISTORY_LOG", "plugin/history_log.py")
+        if log is not None:
+            log.record("typed", name=to, said=text, source="typed", data_dir=Path(data_dir), text=text)
+    except Exception:
+        pass  # only the voice / typed label is lost
+
+
 def _todo_store(data_dir: Path):
     return _load_module("vibi_todo_store", data_dir, "VIBI_TODO_STORE", "todo_store.py")
 
