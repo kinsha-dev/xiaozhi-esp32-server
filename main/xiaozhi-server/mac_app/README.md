@@ -39,6 +39,12 @@ Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in 
 "asks first" and Rerun; actions run for no command (schedules, tasks, CLI) stand on their own. Old `#actions` links open
 Chat. The floating **Filter** button holds type (including "Actions"), action, voice / typed, direction and time.
 
+**Commands** (the former Commands tab): each command entry has **Read** and, for voice and typed commands, **Rerun**.
+Read shows the command, its status and result, and reads them aloud in the browser you are using (silent when Stealth is
+on; the board does not speak). Rerun replays it as a voice request, asks first when it is risky, and Vibi's spoken yes
+still applies. Notes to Claude have Read only. The "Commands" type lists them all; old `#commands` links open Chat that
+way, with every action state and all time.
+
 **Action: recognized** (the default) shows voice commands that were acted on: the server recorded that the speech went to
 the model or ran a tool, and a tool ran or Vibi gave a real reply. **Unrecognized** shows the rest: ignored or misheard
 speech, "didn't catch that" replies (matched on wording), and wake / bye chatter, with any actions they ran. **All** shows

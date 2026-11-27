@@ -17,6 +17,9 @@ Typed turns always count. Nothing is dropped here: each row says "recognized" (F
 
 "action" rows of history.jsonl (what the Actions tab listed) hang under the command they were done for ("actions"); the
 others become rows of their own (channel "action").
+
+Entries that are commands carry "command" (what the Commands tab listed): its text, whether it can be rerun, whether that
+should ask first, and the result (the replies, else what its actions returned).
 """
 import bisect
 import functools
@@ -122,6 +125,12 @@ def _loose(a: dict) -> dict:
             "recognized": None, "actions": [_action(a)], "type": ACTION_TYPES.get(name, "vibi")}
 
 
+def _command(text, rerun=True, actions=(), result=()) -> dict:
+    result = list(result) or [f"{a.get('name')} ({a.get('status', 'ok')}): {a['result']}"
+                              for a in actions if a.get("name") not in NOT_TOOLS and a.get("result")]
+    return {"text": text, "rerun": rerun, "risky": any(a.get("risky") for a in actions), "result": result}
+
+
 def _row(id_, ts, direction, body, input_, channel="", status="", recognized=None, actions=()) -> dict:
     channel = channel or input_ or "voice"
     if channel in ("voice", "typed") and direction == "from" and _norm(body).startswith(_norm(COMPUTER)):
@@ -219,8 +228,15 @@ def _turns(data_dir: Path) -> list:
     answered = {id(r["owner"]) for r in replies if r["owner"] and not FALLBACK.match(r["text"])}
     shown = {id(u) for u in users if u["input"] == "typed"
              or (u.get("heard") and not u.get("chatter") and (u.get("tool") or id(u) in answered))}
-    rows = [_row(u["id"], u["ts"], "from", u["text"], u["input"], recognized=id(u) in shown,
-                 actions=[_action(a) for a in u.get("actions", ())]) for u in users]
+    results = {}
+    for r in replies:
+        results.setdefault(id(r["owner"]), []).append(r["text"])
+    rows = []
+    for u in users:
+        done = u.get("actions", ())
+        row = _row(u["id"], u["ts"], "from", u["text"], u["input"], recognized=id(u) in shown, actions=[_action(a) for a in done])
+        row["command"] = _command(u["text"], actions=done, result=results.get(id(u), ()))
+        rows.append(row)
     for r in replies:
         asked = r["owner"]
         typed = asked is not None and asked["input"] == "typed"
@@ -261,7 +277,13 @@ def _board_input(data_dir: Path, rows: list) -> list:
                 return "typed" if req.get("reason") == "Vibi Ctrl chat" else ""
         return ""
 
-    return [{**r, "input": of(r), "recognized": None, "actions": []} for r in rows]
+    def row(r):
+        out = {**r, "input": of(r), "recognized": None, "actions": []}
+        if r.get("channel") == "inbox" and r.get("direction") == "from":  # a note to Claude: readable, not rerun
+            out["command"] = _command(r.get("body") or "", rerun=False)
+        return out
+
+    return [row(r) for r in rows]
 
 
 def merge(data_dir: Path, board_rows: list) -> list:
@@ -277,7 +299,9 @@ def merge(data_dir: Path, board_rows: list) -> list:
             if any(t["direction"] == "to" and _same(t["body"], q[2]) for t in near):
                 continue
             asked = [t for t in near if t["direction"] == "from" and _same(t["body"], q[1])]
-            r = {**r, "actions": [a for t in asked for a in t["actions"]]}
+            was = [t["command"] for t in asked]
+            r = {**r, "actions": [a for t in asked for a in t["actions"]],
+                 "command": {**_command(q[1], result=[q[2]]), "risky": any(c["risky"] for c in was)}}
             turns = [t for t in turns if t not in asked]
         kept.append(r)
     rows = kept + turns + _announcements(data_dir)
