@@ -149,7 +149,7 @@ class Controller:
 
     def set_stealth(self, on: bool, write: bool = True):
         """Stealth: the mic is off (no wake word, no listening), nothing is read out, queued updates wait. A typed command from
-        Vibi Ctrl still runs a session, silently: the animation shows, the reply goes to captions and the Message board."""
+        Vibi Ctrl still runs a session, silently: the animation shows, the reply goes to captions and the Chat tab."""
         self.stealth = bool(on)
         f = self._stealth_file()
         if write and f is not None:
@@ -457,7 +457,7 @@ class Controller:
             self.state = "idle"
 
     def _file_typed_reply(self, text, reply):
-        """Stealth: put a typed command and Vibi's text reply on the Message board (source Vibi, channel typed)."""
+        """Stealth: put a typed command and Vibi's text reply on the message board, shown in Chat (source Vibi, channel typed)."""
         reply = " ".join(reply or []).strip() if isinstance(reply, list) else ""
         try:
             from mac_app import ctrl_backend as be

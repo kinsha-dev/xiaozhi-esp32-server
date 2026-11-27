@@ -45,9 +45,32 @@ def _row(id_, ts, title, status="ok", detail="", risky=False, rerun=None, source
             "status": status, "detail": detail, "risky": risky, "rerun": rerun, "source": source}
 
 
-def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
+CONVERSATION_TYPES = ("claude", "grok", "gemini", "computer", "vibi", "todo")
+_SOURCE_TYPES = {"Claude": "claude", "Grok Bot": "grok", "Gemini": "gemini", "Vibi": "vibi", "Todo": "todo",
+                 "WhatsApp": "whatsapp", "Mail digest": "mail"}
+
+
+def message_type(row: dict) -> str:
+    """The Chat tab's type filter value for one board row."""
+    source, channel = str(row.get("source") or ""), str(row.get("channel") or "")
+    if channel == "computer-use":
+        return "computer"
+    if channel == "job-hunt":
+        return "jobs"
+    if source.startswith("Notifications"):
+        return "notifications"
+    return _SOURCE_TYPES.get(source, "other")
+
+
+def _has_direction(row: dict, direction: str) -> bool:
+    # a Gemini / Todo "Q: ... A: ..." row is both what was asked and the answer
+    return row.get("direction") == direction or (row.get("source") in ("Gemini", "Todo") and str(row.get("body")).startswith("Q: "))
+
+
+def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "all", direction: str = "all") -> list:
     """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
-    category. Only the last `hours` hours (0 = everything). Read through the voice box repo's message_board module, found next to the data dir."""
+    category and a type. Only the last `hours` hours (0 = everything), filtered by `type` (a message_type value,
+    "conversation" or "all") and `direction` ("to" Vibi, "from" you, or "all") before the limit. Read through the voice box repo's message_board module, found next to the data dir."""
     import importlib.util
 
     mod_path = Path(os.environ.get("VIBI_MESSAGE_BOARD") or Path(data_dir).parent / "server" / "message_board.py")
@@ -60,6 +83,12 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48) -> list:
     if hours and hours > 0:
         cutoff = time.time() - hours * 3600
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
+    rows = [{**r, "type": message_type(r)} for r in rows]
+    if type != "all":
+        wanted = CONVERSATION_TYPES if type == "conversation" else (type,)
+        rows = [r for r in rows if r["type"] in wanted]
+    if direction != "all":
+        rows = [r for r in rows if _has_direction(r, direction)]
     rows = rows[:limit]
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
@@ -83,7 +112,7 @@ def _load_module(name: str, data_dir: Path, env: str, rel: str):
 
 
 def save_upload(data_dir: Path, name: str, b64: str) -> Path:
-    """Store a file picked in the Message board under data/uploads/. Returns its path. ValueError if unusable."""
+    """Store a file picked in the Chat tab under data/uploads/. Returns its path. ValueError if unusable."""
     try:
         raw = base64.b64decode(b64 or "", validate=True)
     except (binascii.Error, ValueError):
@@ -180,9 +209,9 @@ def claude_listening() -> bool:
 
 
 def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
-    """Send a typed message from the Message board: to Claude (the voice box inbox the listener reads), to the Grok Bot
+    """Send a typed message from the Chat tab: to Claude (the voice box inbox the listener reads), to the Grok Bot
     (a `task` request in data/grok/requests) or to Gemini (answered in the background, OpenRouter if Gemini fails; the answer
-    is posted on the board). Same file contracts the voice path uses, so replies show up on the board. `file` is
+    is posted on the board). Same file contracts the voice path uses, so replies show up in Chat. `file` is
     {"name", "data": base64}: saved under data/uploads/ and attached (Gemini reads it; Claude and Grok get its path)."""
     to, text = (to or "").lower(), (text or "").strip()
     if to not in CHAT_TARGETS:

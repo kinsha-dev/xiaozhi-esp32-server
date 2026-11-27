@@ -28,9 +28,16 @@ voice box repo, read and written through its `server/todo_store.py` (shared with
 
 Tests: `mac_app/tests/test_todo_tab.py` (`VIBI_TODO_STORE` points it at another voice box checkout).
 
+## Chat tab: one timeline
+
+The Message board tab is merged into **Chat**: every conversation and feed (Claude, Grok Bot, Gemini, Computer use,
+Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in time order. Filter by message type
+("Conversations" = the first six), direction (to or from Vibi) and time range (last 72 hours or all time); the newest
+300 matches are shown and the choice is remembered. Long feed items start collapsed. Old `#board` links open Chat.
+
 ## Replying to one response
 
-In **Chat** or **Message board**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply
+In **Chat**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply
 menu: the quoted response, a text box, and a recipient (Claude, Grok Bot, Gemini or Computer use; preselected to the sender, Claude for
 Vibi). The reply goes through `/api/chat` with up to 1000 characters of the quote in front as context. Enter sends,
 Shift+Enter adds a line, Escape cancels.

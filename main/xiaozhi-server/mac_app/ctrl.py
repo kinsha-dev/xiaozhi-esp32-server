@@ -71,7 +71,8 @@ class CtrlPanel:
                     hours = float(query.get("hours", 48))
                 except ValueError:
                     hours = 48
-                data = be.messages(self.data_dir, hours=hours)
+                data = be.messages(self.data_dir, hours=hours, type=query.get("type", "all"),
+                                   direction=query.get("direction", "all"))
             elif path == "/api/stealth" and method == "GET":
                 data = {"on": (self.data_dir / "stealth").exists()}
             elif path == "/api/stealth" and method == "POST":
@@ -85,7 +86,7 @@ class CtrlPanel:
                 text = " ".join(str(body.get("text", "")).split())
                 if not text or len(text) > be.CHAT_LIMIT:
                     return 400, "application/json", b'{"error":"empty or too long"}'
-                # A typed command to Vibi itself: runs like a spoken one, silently in Stealth (reply lands on the board).
+                # A typed command to Vibi itself: runs like a spoken one, silently in Stealth (reply shows in Chat).
                 if not self._rerun(text):
                     return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
                 data = {"id": "", "to": "vibi"}
