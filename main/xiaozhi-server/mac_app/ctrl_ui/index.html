@@ -26,6 +26,8 @@ button.act:hover{border-color:var(--acc)}
 .chatfeed{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px;flex:1;min-height:0;overflow-y:auto}.bub{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--card);white-space:pre-wrap;word-break:break-word}
 .bub.note{align-self:center;background:none;color:var(--mut)}button.act.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.rich{margin-top:8px;white-space:normal}.rcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.rimg{height:28px;max-width:100%;border-radius:6px;object-fit:contain}.rimgs{display:flex;flex-wrap:wrap;gap:6px}.rimgs img{max-height:180px;max-width:100%;border-radius:8px}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
+.canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}tr.canreply.sel{background:var(--card)}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
+.replybox{white-space:normal;cursor:auto;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}.bub.sel{width:min(480px,92%);max-width:92%}.replybox>div>div:last-child{flex-wrap:wrap}.replybox button{white-space:nowrap}.replybox textarea{min-width:0!important}.replybox .meta{border-left:3px solid var(--acc);padding-left:8px;white-space:pre-wrap;max-height:64px;overflow:hidden}
 .bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
 #todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 #todos td:first-child,#todos td.x{width:1%;white-space:nowrap}#todos td.tx{word-break:break-word}#todos td.done{color:var(--mut);text-decoration:line-through}#todos td.done .meta{text-decoration:none;display:inline-block;width:100%}#todos h2{margin:20px 0 4px}
@@ -58,16 +60,52 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"}}],
+ {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 function chatMessagesUpdate(m){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
   for(const r of m.filter(r=>CHAT_NAMES[r.source]).slice().reverse()){const who=CHAT_NAMES[r.source],body=r.body||r.summary||"",bad=r.status=="failed"?"error":"reply";
     if(r.source=="Gemini"||r.source=="Todo"){const q=body.match(/^Q: ([\s\S]*?)\n\n(?:A: )?([\s\S]*)$/);
-      if(q){out.push({meta:`You → ${who} · ${r.time}`,text:q[1],variant:"me"},{meta:`${who} · ${r.time}`,text:q[2],variant:bad});continue}}
-    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
+      if(q){out.push({meta:`You → ${who} · ${r.time}`,text:q[1],variant:"me"},{meta:`${who} · ${r.time}`,text:q[2],variant:bad,reply:replyTarget(r,q[2])});continue}}
+    out.push(r.direction=="from"?{meta:`You → ${who} · ${r.time} · ${r.status}`,text:body,variant:"me"}:{meta:`${who} · ${r.time}`,text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})})}
   if(!out.length)out.push({meta:"",text:"No conversation yet. Pick Claude, Grok or Gemini above and send a message.",variant:"note"});
   return {version:"1.0",updateDataModel:{surfaceId:"chat",path:"/messages",value:out}}}
+/* ---- Reply menu: select one response (Chat bubble or Message board row) and answer it. The menu is its own A2UI surface;
+   the reply goes through /api/chat with the quoted response in front as context. One menu is open at a time, and its element
+   is moved back under the selected response after each redraw, so a half-typed reply survives the 5 s refresh. ---- */
+const REPLY_FROM={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Vibi":"Vibi"},QUOTE_MAX=1000,CHAT_MAX=4000;
+const replyTarget=(r,text)=>r.direction=="to"&&REPLY_FROM[r.source]&&text?{key:String(r.id),who:REPLY_FROM[r.source],time:r.time,to:CHAT_TO[r.source]||"claude",quote:String(text)}:null;
+const Reply={target:null,el:null,busy:false,
+ open(t){if(this.target?.key!=t.key){this.target=t;A2ui.process({version:"1.0",createSurface:{surfaceId:"reply",catalogId:"vibi:ctrl-chat",components:[
+    {id:"root",component:"Column",children:["quote","text","bar"]},
+    {id:"quote",component:"Text",variant:"caption",text:{"@path":"/reply/quote"}},
+    {id:"text",component:"TextField",label:"Reply",placeholder:"Reply…",variant:"longText",value:{"@path":"/reply/text"}},
+    {id:"bar",component:"Row",align:"center",children:["to","send","cancel"]},
+    {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Reply to",value:{"@path":"/reply/to"},options:[{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"}]},
+    {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_reply",context:{to:{"@path":"/reply/to"},text:{"@path":"/reply/text"}}}}},
+    {id:"sendLbl",component:"Text",text:"Send reply"},
+    {id:"cancel",component:"Button",child:"cancelLbl",action:{event:{name:"cancel_reply"}}},
+    {id:"cancelLbl",component:"Text",text:"Cancel"}],
+    dataModel:{reply:{quote:`${t.who} · ${t.time}\n${t.quote.slice(0,200)}${t.quote.length>200?"…":""}`,to:[t.to],text:""}}}});
+   this.el?.remove();this.el=document.createElement("div");this.el.className="replybox";A2ui.mount("reply",this.el);
+   this.el.onkeydown=e=>{if(e.key=="Escape")this.close()}}
+  this.place();this.el.querySelector("textarea")?.focus()},
+ close(){this.target=null;this.el?.closest("tr.replyrow")?.remove();this.el?.remove();this.el=null;this.mark()},
+ mark(){document.querySelectorAll(".canreply").forEach(n=>n.classList.toggle("sel",n.dataset.key==this.target?.key))},
+ place(){const host=this.target&&[...document.querySelectorAll(".canreply")].find(n=>n.dataset.key==this.target.key);this.mark();if(!host)return;
+  if(host.tagName=="TR"){if(host.nextElementSibling?.contains(this.el))return;this.el.closest("tr.replyrow")?.remove();const tr=document.createElement("tr"),td=document.createElement("td");tr.className="replyrow";td.colSpan=host.children.length;td.append(this.el);tr.append(td);host.after(tr)}
+  else if(this.el.parentNode!=host){host.append(this.el);this.el.scrollIntoView({block:"nearest"})}},
+ keep(redraw){const f=document.activeElement,had=this.el?.contains(f);redraw();if(this.target){this.place();if(had&&this.el.isConnected)f.focus({preventScroll:true})}},
+ attach(n,t){n.classList.add("canreply");n.dataset.key=t.key;n.onclick=e=>{if(e.target.closest("a,button,select,textarea,input,.replybox")||String(getSelection()))return;this.target?.key==t.key?this.close():this.open(t)}},
+ button(t){const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent="↩ Reply";b.setAttribute("aria-label",`Reply to ${t.who}, ${t.time}`);b.onclick=()=>this.open(t);return b},
+ compose(t,text){  // no blank lines: the Chat tab splits Gemini's "Q: …\n\nA: …" rows at the first one
+  const tidy=s=>s.replace(/\n\s*\n/g,"\n").trim(),head=`Replying to ${t.who} (${t.time}):`,body=tidy(text),q=tidy(t.quote),room=Math.min(QUOTE_MAX,CHAT_MAX-head.length-body.length-20);
+  if(room<1)return null;return`${head}\n> ${(q.length>room?q.slice(0,room)+"…":q).replace(/\n/g,"\n> ")}\n${body}`},
+ async send(ctx){const text=String(ctx.text||"").trim(),to=(ctx.to||[])[0],t=this.target;if(!text||!t||this.busy)return;
+  const full=this.compose(t,text);if(!full||full.length>CHAT_MAX){toast("Reply too long");return}
+  this.busy=true;try{const r=await api("/api/chat",{to,text:full});if(r.error){toast(r.error);return}
+   if(this.target===t)this.close();A2ui.stick=true;toast(r.to=="todo"?r.note:to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude"));load()}
+  catch(e){toast("Could not send the reply")}finally{this.busy=false}}};
 /* Rich answers: an optional A2UI surface (`ui`) from the bot is untrusted. It is cut down again here (whitelisted components,
    http(s) URLs only, Button events limited to reply / open_url) and drawn with the same renderer; unknown components become Text. */
 const RICH_OK=new Set(["Column","Row","List","Card","Tabs","Divider","Text","Image","Icon","Button","Badge"]),httpUrl=u=>typeof u=="string"&&/^https?:\/\/\S+$/i.test(u)&&u.length<2048?u:"";
@@ -81,7 +119,8 @@ function cleanRich(r,to){if(!r||typeof r!="object"||!Array.isArray(r.components)
   return{comps,data,watch:[],to:["claude","grok","gemini"].includes(to)?to:"grok"}}
 const A2ui={surfaces:{},onEvent:null,
  process(msg){const c=msg.createSurface;if(c){this.surfaces[c.surfaceId]={comps:Object.fromEntries(c.components.map(x=>[x.id,x])),data:c.dataModel||{},watch:[]};return}
-  const u=msg.updateDataModel;if(u){const sf=this.surfaces[u.surfaceId];this.set(sf,u.path,u.value);sf.watch.forEach(f=>f())}},
+  const u=msg.updateDataModel;if(u){const sf=this.surfaces[u.surfaceId];this.set(sf,u.path,u.value);this.refresh(sf)}},
+ refresh(sf){Reply.keep(()=>sf.watch.forEach(f=>f()))},  // a redraw rebuilds bubbles; keep() puts the open reply menu back
  get(sf,path,scope){const parts=((path[0]=="/"?"":(scope||"")+"/")+path).split("/").filter(Boolean);let v=sf.data;for(const k of parts){if(v==null)return;v=v[k]}return v},
  set(sf,path,val){const parts=path.split("/").filter(Boolean);let o=sf.data;for(const k of parts.slice(0,-1))o=o[k]??={};parts.length?o[parts.at(-1)]=val:sf.data=val},
  val(sf,x,scope){return x&&typeof x=="object"&&!Array.isArray(x)&&"@path" in x?this.get(sf,x["@path"],scope):x},
@@ -94,14 +133,15 @@ const A2ui={surfaces:{},onEvent:null,
    case"Column":case"Row":el.style.cssText+=`display:flex;gap:8px;flex-direction:${c.component=="Row"?"row":"column"}${c.align=="center"?";align-items:center":c.align=="end"?";align-items:flex-end;flex-wrap:wrap":""}`;el.append(...kids());break;
    case"List":{const isFeed=sf===me.surfaces.chat&&cid=="feed";el.className=isFeed?"chatfeed":"rlist";let last,own=[];const t=c.children,draw=()=>{const items=me.get(sf,t.path)||[],j=JSON.stringify(items);if(j==last)return;last=j;
       const atEnd=isFeed&&el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
-      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length;el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));own=sf.watch.slice(n);if(isFeed&&(first||atEnd||me.stick)){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
+      sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length,fill=()=>el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));fill();own=sf.watch.slice(n);if(isFeed&&(first||atEnd||me.stick)){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
    case"Text":bind(()=>{el.textContent=v(c.text)??"";el.className=c.variant=="caption"?"meta":""});break;
    case"ChatBubble":bind(()=>{const k=v(c.variant);el.className="bub "+(k=="me"?"me":k=="error"?"bad":k=="note"?"note":"");
       el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+esc(v(c.text));
       const rich=cleanRich(v(c.rich),v(c.to));if(rich){const h=document.createElement("div");h.className="rich";h.append(me.node(rich,"root",""));el.append(h)}
       const ims=(Array.isArray(v(c.images))?v(c.images):[]).map(httpUrl).filter(Boolean).slice(0,8),lks=(Array.isArray(v(c.links))?v(c.links):[]).filter(l=>l&&httpUrl(l.url)).slice(0,8);
       if(ims.length){const h=document.createElement("div");h.className="rich rimgs";for(const u of ims){const im=document.createElement("img");im.src=u;im.alt="";im.referrerPolicy="no-referrer";im.loading="lazy";h.append(im)}el.append(h)}
-      if(lks.length){const h=document.createElement("div");h.className="rich";for(const l of lks){const a=document.createElement("a");a.href=l.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=String(l.title||l.url);a.style.cssText="display:block;color:var(--acc)";h.append(a)}el.append(h)}});break;
+      if(lks.length){const h=document.createElement("div");h.className="rich";for(const l of lks){const a=document.createElement("a");a.href=l.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=String(l.title||l.url);a.style.cssText="display:block;color:var(--acc)";h.append(a)}el.append(h)}
+      const rt=v(c.reply);if(rt){Reply.attach(el,rt);el.append(Reply.button(rt))}});break;
    case"Card":el.className="rcard";if(c.child)el.append(me.node(sf,c.child,scope));break;
    case"Divider":el.className="rdiv";break;
    case"Badge":el.className="pill rbadge";bind(()=>{el.textContent=v(c.text)??"";el.style.display=el.textContent?"":"none"});break;
@@ -123,8 +163,10 @@ const A2ui={surfaces:{},onEvent:null,
  fire(sf,cid,scope){const ev=sf.comps[cid].action.event,ctx={};for(const[k,x]of Object.entries(ev.context||{}))ctx[k]=this.val(sf,x,scope);this.onEvent&&this.onEvent(ev.name,ctx,sf)}};
 function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
 const chatFile=Object.assign(document.createElement("input"),{type:"file",style:"display:none"});
-chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",chatFile.files[0]?.name||"");sf.watch.forEach(f=>f())};
+chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",chatFile.files[0]?.name||"");A2ui.refresh(sf)};
 A2ui.onEvent=async(name,ctx,sf)=>{
+  if(name=="send_reply")return Reply.send(ctx);
+  if(name=="cancel_reply")return Reply.close();
   if(name=="pick_file"){chatFile.click();return}
   if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
   if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||r.note||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
@@ -132,7 +174,7 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
-  A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";sf.watch.forEach(f=>f());
+  A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
   toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear on the Message board":r.to=="gemini"?"Asked Gemini; the answer will appear here":"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.mount("chat",$("#chatHost"))}
   A2ui.process(chatMessagesUpdate(await api("/api/messages?hours=72")))}
@@ -158,9 +200,10 @@ async function load(){
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
   if(tab=="board"){const all=window.boardAll||false,m=await api("/api/messages?hours="+(all?0:48)),bar=`<p class="meta">${all?"All messages":"Last 48 hours"} · <a href="#" onclick="boardAll=!boardAll;load();return false">${all?"Show last 48 hours":"Show all"}</a></p>`;
-    boardShell().innerHTML=bar+(m.length?'<table><tr><th>Time</th><th>Category</th><th></th><th>Message</th><th>Status</th></tr>'+m.map((r,i)=>`<tr><td class="t">${esc(r.time)}</td><td><span class="pill">${esc(r.category)}</span></td><td class="meta">${r.direction=="to"?"→ Vibi":"Vibi →"}</td>
+    if(tab!="board")return;const html=bar+(m.length?'<table><tr><th>Time</th><th>Category</th><th></th><th>Message</th><th>Status</th></tr>'+m.map((r,i)=>`<tr data-i="${i}"><td class="t">${esc(r.time)}</td><td><span class="pill">${esc(r.category)}</span></td><td class="meta">${r.direction=="to"?"→ Vibi":"Vibi →"}</td>
     <td>${esc(r.summary)}${r.body&&r.body!==r.summary?` <button class="act" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">Expand</button><div class="d" hidden style="white-space:pre-wrap;margin-top:6px">${esc(r.body)}</div>`:""}</td>
-    <td><span class="pill ${r.status=="failed"?"error":r.status=="done"||r.status=="answered"||r.status=="delivered"||r.status=="sent"?"ok":""}">${esc(r.status)}</span></td></tr>`).join("")+"</table>":'<div class="empty">No messages in this time range. Grok Bot, Claude, phone apps, WhatsApp and job-hunt results show up here.</div>');return}
+    <td><span class="pill ${r.status=="failed"?"error":r.status=="done"||r.status=="answered"||r.status=="delivered"||r.status=="sent"?"ok":""}">${esc(r.status)}</span></td></tr>`).join("")+"</table>":'<div class="empty">No messages in this time range. Grok Bot, Claude, phone apps, WhatsApp and job-hunt results show up here.</div>'),box=boardShell();
+    if(box.html!==html){Reply.keep(()=>{box.innerHTML=box.html=html;box.querySelectorAll("tr[data-i]").forEach(tr=>{const r=m[tr.dataset.i],t=replyTarget(r,r.body||r.summary);if(t){Reply.attach(tr,t);tr.children[3].append(" ",Reply.button(t))}})})}else if(Reply.target)Reply.keep(()=>{});return}
   const rows=await api("/api/history?kind="+tab);
   $("#main").innerHTML=rows.length?`<table><tr><th>Time</th><th>${tab=="actions"?"Action":"Entry"}</th><th>Status</th><th>Result</th><th></th></tr>`+rows.map(r=>`<tr><td class="t">${esc(r.time)}</td>
   <td>${esc(r.title)}${r.risky?' <span class="pill warn">asks first</span>':""}${r.source?`<div class="meta">${esc(r.source)}</div>`:""}</td><td><span class="pill ${r.status=="error"?"error":r.status=="ok"||r.status=="done"?"ok":""}">${esc(r.status)}</span></td>

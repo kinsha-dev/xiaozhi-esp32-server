@@ -28,6 +28,13 @@ voice box repo, read and written through its `server/todo_store.py` (shared with
 
 Tests: `mac_app/tests/test_todo_tab.py` (`VIBI_TODO_STORE` points it at another voice box checkout).
 
+## Replying to one response
+
+In **Chat** or **Message board**, click a Claude / Grok / Gemini / Vibi response (or its **↩ Reply**) to open the reply
+menu: the quoted response, a text box, and a recipient (Claude, Grok Bot or Gemini; preselected to the sender, Claude for
+Vibi). The reply goes through `/api/chat` with up to 1000 characters of the quote in front as context. Enter sends,
+Shift+Enter adds a line, Escape cancels.
+
 ## Vibi Ctrl remote access (tunnel) and passkeys
 
 Menu: **Remote tunnel: off/on** (click to start/stop; shows the hostname) and **Copy remote link**.
