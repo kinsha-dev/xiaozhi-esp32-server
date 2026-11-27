@@ -13,6 +13,7 @@ from mac_app import captions
 
 HEADERS = {"device-id": "mac-app", "client-id": "mac-app"}
 UP_FRAME_BYTES = 1920  # 60 ms of 16 kHz int16 mono
+CONNECT_S = 30.0  # a busy Mac can take well over 5 s to answer; giving up sooner drops the command
 AUTO_REPLY_IDLE_S = 20.0  # an unprompted read-out that asked a question waits this long for the answer
 
 
@@ -27,7 +28,7 @@ def awaiting_reply() -> bool:
 
 class Session:
     def __init__(self, url, mic_frames: asyncio.Queue, speaker, on_state: Callable[[str], None],
-                 idle_timeout: float = 10.0, tail: float = 0.25):
+                 idle_timeout: float = 10.0, tail: float = 0.25, connect_timeout: float = CONNECT_S):
         self._url = url
         self._mic = mic_frames
         self._speaker = speaker
@@ -41,6 +42,10 @@ class Session:
         self._auto = False
         self.quiet = False  # Stealth: drop audio, never speak, never listen; the text reply is kept in `reply`
         self.reply = []
+        self.connect_timeout = connect_timeout
+        self.sent = False  # the command reached the server
+        self.error = ""  # why the session failed, in words for the user
+        self._stopped = False  # a reply finished
 
     def _set(self, state: str):
         self._state = state
@@ -54,26 +59,38 @@ class Session:
             self._idle_timeout = min(self._idle_timeout, AUTO_REPLY_IDLE_S)
         self._set("connecting")
         try:
-            async with connect(self._url, additional_headers=HEADERS, open_timeout=5, max_size=None) as ws:
+            async with connect(self._url, additional_headers=HEADERS, open_timeout=self.connect_timeout, max_size=None) as ws:
                 await self._converse(ws, first_text)
-        except (OSError, asyncio.TimeoutError, Exception):
-            pass  # refused / dropped / protocol error: just return to idle
+        except (TimeoutError, asyncio.TimeoutError):
+            self._failed(f"the voice server did not answer within {self.connect_timeout:g} s (the Mac may be overloaded)")
+        except OSError as e:
+            self._failed(f"could not reach the voice server ({e.strerror or type(e).__name__})")
+        except Exception as e:  # dropped / protocol error: return to idle, but say why
+            self._failed(f"the connection to the voice server failed ({type(e).__name__}: {str(e)[:120]})")
         finally:
             self._set("idle")
 
+    def _failed(self, why: str):
+        self.error = f"Sent, but {why} before replying." if self.sent else f"Nothing ran: {why}, so the command was not sent."
+        print(f"[session] {self.error}", flush=True)
+
     async def _converse(self, ws, first_text):
         await ws.send(hello_message())
-        hello = await asyncio.wait_for(self._wait_hello(ws), 5)
+        hello = await asyncio.wait_for(self._wait_hello(ws), self.connect_timeout)
         sid = hello.session_id
         params = hello.audio_params or {}
         self._decoder = OpusDecoder(params.get("sample_rate", 24000), params.get("frame_duration", 60))
         await ws.send(listen_message(sid, "start"))
         await ws.send(detect_message(sid, first_text))
+        self.sent = True
         captions.set("you", first_text)
         self._set("thinking")
         tasks = [asyncio.create_task(c) for c in (self._receive(ws, sid), self._send_mic(ws), self._watch_idle())]
         try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            broke = next((t.exception() for t in done if t.exception()), None)
+            if not self.reply and (broke or tasks[0] in done and not self._stopped):
+                self._failed("the voice server closed the connection")
         finally:
             for t in tasks:
                 t.cancel()
@@ -115,6 +132,7 @@ class Session:
                 if self._state != "speaking":
                     self._set("speaking")
             elif ev.kind == "tts" and ev.state == "stop":
+                self._stopped = True
                 captions.finish()
                 if self.quiet:
                     return  # nothing was spoken, so nothing to wait for, and no listening in Stealth

@@ -60,9 +60,13 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
  {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
  {id:"fRange",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Time range",value:{"@path":"/filter/hours"},action:{event:{name:"filter"}},options:[{label:"Last 72 hours",value:"72"},{label:"All time",value:"0"}]},
- {id:"form",component:"Row",align:"end",children:["to","text","fileBtn","fileName","send"]},
+ {id:"form",component:"Row",align:"end",children:["to","text","pasteBtn","fileBtn","fileName","fileClear","send"]},
  {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"}]},
  {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
+ {id:"pasteBtn",component:"Button",child:"pasteLbl",action:{event:{name:"paste"}}},
+ {id:"pasteLbl",component:"Text",text:"📋 Paste"},
+ {id:"fileClear",component:"Button",child:"clearLbl",visible:{"@path":"/chat/fileName"},action:{event:{name:"clear_file"}}},
+ {id:"clearLbl",component:"Text",text:"✕ Remove"},
  {id:"fileBtn",component:"Button",child:"fileLbl",action:{event:{name:"pick_file"}}},
  {id:"fileLbl",component:"Text",text:"📎 File"},
  {id:"fileName",component:"Text",variant:"caption",text:{"@path":"/chat/fileName"}},
@@ -90,7 +94,7 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
    the reply goes through /api/chat with the quoted response in front as context. One menu is open at a time, and its element
    is moved back under the selected response after each redraw, so a half-typed reply survives the 5 s refresh. ---- */
 const REPLY_FROM={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Vibi":"Vibi"},QUOTE_MAX=1000,CHAT_MAX=4000;
-const replyTarget=(r,text)=>r.direction=="to"&&REPLY_FROM[r.source]&&text?{key:String(r.id),who:REPLY_FROM[r.source],time:r.time,to:CHAT_TO[r.source]||"claude",quote:String(text)}:null;
+const replyTarget=(r,text)=>r.direction=="to"&&r.status!="running"&&REPLY_FROM[r.source]&&text?{key:String(r.id),who:REPLY_FROM[r.source],time:r.time,to:CHAT_TO[r.source]||"claude",quote:String(text)}:null;
 const Reply={target:null,el:null,busy:false,
  open(t){if(this.target?.key!=t.key){this.target=t;A2ui.process({version:"1.0",createSurface:{surfaceId:"reply",catalogId:"vibi:ctrl-chat",components:[
     {id:"root",component:"Column",children:["quote","text","bar","hint"]},
@@ -194,7 +198,7 @@ const A2ui={surfaces:{},onEvent:null,expanded:new Set(),
       s.innerHTML=c.options.map(o=>`<option value="${esc(o.value)}">${esc(v(o.label))}</option>`).join("");
       s.onchange=()=>{me.set(sf,c.value["@path"],[s.value]);if(c.action)me.fire(sf,cid,scope)};bind(()=>{s.value=(v(c.value)||[])[0]??""});el.append(s);break}
    case"Button":{const b=document.createElement("button");b.className="act"+(c.variant=="primary"?" pri":"");b.type="button";b.append(me.node(sf,c.child,scope).firstChild||"");
-      b.onclick=()=>me.fire(sf,cid,scope);el.append(b);break}}
+      b.onclick=()=>me.fire(sf,cid,scope);el.append(b);if(c.visible)bind(()=>{el.style.display=v(c.visible)?"":"none"});break}}
   return el.style.cssText||el.className||el.childNodes.length?el:el},
  fire(sf,cid,scope){const ev=sf.comps[cid].action.event,ctx={};for(const[k,x]of Object.entries(ev.context||{}))ctx[k]=this.val(sf,x,scope);this.onEvent&&this.onEvent(ev.name,ctx,sf)}};
 function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=()=>no(r.error);r.readAsDataURL(f)})}
@@ -202,11 +206,27 @@ const chatFile=Object.assign(document.createElement("input"),{type:"file",style:
 chatFile.onchange=()=>{const sf=A2ui.surfaces.chat;A2ui.set(sf,"/chat/fileName",chatFile.files[0]?.name||"");A2ui.refresh(sf)};
 document.addEventListener("click",e=>{if(!e.target.closest("#fbtn,#chatHost>div>div:first-child"))filterOpen(false)});
 document.addEventListener("keydown",e=>{if(e.key=="Escape")filterOpen(false)});
+/* Paste into the Chat tab: text goes into the message box (⌘V does that by itself); a screenshot, image or copied file
+   becomes the attachment, like picking it with File. The Paste button reads the clipboard for you. */
+function pastedFile(d){const f=[...(d?.files||[])],t=[...(d?.types||[])];return f.length&&!(t.includes("text/plain")&&t.includes("text/html"))?f[0]:null}  // text with a rendered picture (documents) stays text
+const FILE_MAX=5*1024*1024;
+function attachFile(f){if(f.size>FILE_MAX){toast("File too large (5 MB max)");return}
+  const ext=(f.type.split("/")[1]||"bin").replace(/\W.*/,""),name=f.name&&f.name!="image.png"?f.name:`pasted-${new Date().toISOString().slice(0,19).replace(/\D/g,"")}.${ext}`,d=new DataTransfer();
+  d.items.add(new File([f],name,{type:f.type}));chatFile.files=d.files;chatFile.onchange();toast("Attached "+name)}
+function insertText(text){const i=document.querySelector("#chatHost textarea:not(.replybox textarea)");if(!i||!text)return;i.setRangeText(text,i.selectionStart,i.selectionEnd,"end");i.oninput();i.focus()}
+async function pasteClipboard(){try{if(navigator.clipboard.read){for(const item of await navigator.clipboard.read()){const image=item.types.find(t=>t.startsWith("image/"));
+        if(image&&!(item.types.includes("text/plain")&&item.types.includes("text/html")))return attachFile(new File([await item.getType(image)],"image.png",{type:image}));
+        if(item.types.includes("text/plain"))return insertText(await(await item.getType("text/plain")).text())}toast("Nothing to paste")}
+    else insertText(await navigator.clipboard.readText())}catch(e){toast("The browser did not allow reading the clipboard. Press ⌘V instead.")}}
+document.addEventListener("paste",e=>{if(tab!="chat"||e.target.closest?.(".replybox"))return;const f=pastedFile(e.clipboardData);
+  if(f){e.preventDefault();attachFile(f)}else if(!e.target.closest?.("input,textarea")){e.preventDefault();insertText(e.clipboardData.getData("text/plain"))}});
 A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="send_reply")return Reply.send(ctx);
   if(name=="cancel_reply")return Reply.close();
   if(name=="filter"){try{localStorage.setItem("vctrlFilter",JSON.stringify(sf.data.filter))}catch(e){}Reply.close();filterButton();A2ui.stick=true;return loadChat()}
   if(name=="pick_file"){chatFile.click();return}
+  if(name=="paste")return pasteClipboard();
+  if(name=="clear_file"){chatFile.value="";return chatFile.onchange()}
   if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
   if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||r.note||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
   if(name!="send_chat")return;

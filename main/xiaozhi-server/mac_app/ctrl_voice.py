@@ -25,6 +25,7 @@ import bisect
 import functools
 import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -257,6 +258,41 @@ def _announcements(data_dir: Path) -> list:
     return rows
 
 
+def pending_typed(data_dir: Path):
+    try:
+        row = json.loads((data_dir / "typed_pending.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return row if isinstance(row, dict) else None
+
+
+def _progress(data_dir: Path, rows: list) -> list:
+    """What is still under way: a typed command with no answer yet, and a running (or silently dead) computer task."""
+    out, now = [], time.time()
+
+    def add(id_, ts, body, channel, status):
+        row = _row(id_, ts, "to", body, "", channel, status)
+        if channel == "computer-use":
+            row["source"] = "Claude"
+        out.append(row)
+
+    wait = pending_typed(data_dir)
+    if wait:
+        since = _num(wait.get("since"))
+        if now - since < 300 and not any(r["direction"] == "to" and r["ts"] >= since for r in rows):
+            add("pending-typed", since, f"Waiting for Vibi to answer “{wait.get('text')}”…", "progress", "running")
+    try:
+        task = json.loads((data_dir / "computer_use" / "state.json").read_text())
+        over = now > _num(task.get("deadline")) + 60
+        add("cu-progress", _num(task.get("started")) or now,
+            "Computer use stopped without a result (the voice server may have restarted)." if over else
+            f"Computer use is working… step {task.get('steps', 0)} of {task.get('max_steps', '?')}.",
+            "computer-use", "failed" if over else "running")
+    except (OSError, ValueError, AttributeError):
+        pass
+    return out
+
+
 def _board_input(data_dir: Path, rows: list) -> list:
     claude = {str(r.get("id")): r.get("source") for r in _jsonl(data_dir / "to_claude.jsonl")}
 
@@ -298,12 +334,13 @@ def merge(data_dir: Path, board_rows: list) -> list:
             near = [t for t in turns if abs(t["ts"] - r["ts"]) < 1800]
             if any(t["direction"] == "to" and _same(t["body"], q[2]) for t in near):
                 continue
-            asked = [t for t in near if t["direction"] == "from" and _same(t["body"], q[1])]
+            asked = [t for t in near if t["direction"] == "from" and -5 <= r["ts"] - t["ts"] <= 300 and _same(t["body"], q[1])]
             was = [t["command"] for t in asked]
             r = {**r, "actions": [a for t in asked for a in t["actions"]],
                  "command": {**_command(q[1], result=[q[2]]), "risky": any(c["risky"] for c in was)}}
             turns = [t for t in turns if t not in asked]
         kept.append(r)
     rows = kept + turns + _announcements(data_dir)
+    rows += _progress(data_dir, rows)
     rows.sort(key=lambda r: -r["ts"])  # stable: board pairs keep their order
     return rows

@@ -439,32 +439,54 @@ class Controller:
             tones.stop()  # a confused or pending chirp must not keep playing over the reply
             self._active = True
             self._sess_q = asyncio.Queue(maxsize=100)
-        self._sess_future = asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto, quiet=self.stealth), self._loop)
+        self._sess_future = asyncio.run_coroutine_threadsafe(self._run_session(text, self._sess_q, auto, quiet=self.stealth, typed=force), self._loop)
         return True
 
-    async def _run_session(self, text, q, auto=False, quiet=False):
-        session = None
+    async def _run_session(self, text, q, auto=False, quiet=False, typed=False):
+        session, stopped = None, ""
+        if typed:
+            self._pending(text)
         try:
             session = self._session_factory(q, self._set_state)
             session.quiet = quiet  # Stealth: no audio out, no listening; the reply is filed on the board
             await (session.run(text, auto=True) if auto else session.run(text))
+        except asyncio.CancelledError:
+            stopped = "Interrupted by a newer command before Vibi replied."
+            raise
+        except Exception as e:
+            stopped = f"The Mac app could not run the command ({type(e).__name__}: {str(e)[:120]})."
+            raise
         finally:
-            if quiet:
-                self._file_typed_reply(text, getattr(session, "reply", None))
+            reply = getattr(session, "reply", None)
+            # Stealth files every reply; otherwise the server logs it, so only a typed command left without one is filed
+            if quiet or (typed and not reply):
+                self._file_typed_reply(text, reply, stopped or getattr(session, "error", ""))
+            if typed:
+                self._pending(None, text)
             self._mute_until = time.monotonic() + TAIL_S
             self._active = False
             self._sess_q = None
             self.state = "idle"
 
-    def _file_typed_reply(self, text, reply):
-        """Stealth: put a typed command and Vibi's text reply on the message board, shown in Chat (source Vibi, channel typed)."""
+    def _pending(self, text, done=None):
+        """The Chat tab shows a typed command as waiting until it is answered."""
+        try:
+            from mac_app import ctrl_backend as be
+            be.set_pending(self.cfg.data_dir, text, done)
+        except Exception:  # only the progress line is lost
+            pass
+
+    def _file_typed_reply(self, text, reply, problem=""):
+        """Put a command and Vibi's text reply, or why there is none, on the message board, shown in Chat (source Vibi,
+        channel typed). Never an empty reply."""
         reply = " ".join(reply or []).strip() if isinstance(reply, list) else ""
         try:
             from mac_app import ctrl_backend as be
             mod = be._load_module("vibi_message_board", self.cfg.data_dir, "VIBI_MESSAGE_BOARD", "message_board.py")
             if mod is not None:
-                mod.post_message(f"You: {text}\n\nVibi: {reply or '(no reply)'}", self.cfg.data_dir, source="Vibi",
-                                 channel="typed", direction="to", status="done" if reply else "failed")
+                body = " ".join(x for x in (reply, problem) if x) or "Vibi sent no text reply."
+                mod.post_message(f"You: {text}\n\nVibi: {body}", self.cfg.data_dir, source="Vibi",
+                                 channel="typed", direction="to", status="done" if reply and not problem else "failed")
         except Exception:  # the board is a log; a failure to file must never break the session
             pass
 
