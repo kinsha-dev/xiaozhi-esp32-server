@@ -5,13 +5,17 @@ Reads the hook JSON on stdin and, for every project (any cwd below the home dire
 narrows it to those folders), registers this session as the project's latest listener and adds
 context telling Claude to run `vibi listen --project <project>` in the background and to start it again each time
 it returns. The project is the git repo's folder name (the main checkout's, inside a worktree), which is what
-`vibi` matches "tell Claude <project>, ..." against. VIBI_LISTEN_PROJECT overrides the name. If data/listeners/<project>.main holds a session id, only that
-session registers and listens. Always exits 0. Stdlib only.
+`vibi` matches "tell Claude <project>, ..." against. VIBI_LISTEN_PROJECT overrides the name. The first session of a project pins itself in
+data/listeners/<project>.main; while it is alive (its listener is running, or it was active in the last
+GRACE_SECONDS) other sessions neither register nor listen. After that the next new session takes over. Always exits 0. Stdlib only.
 """
 import json
 import os
+import re
 import subprocess
 import sys
+import time
+from glob import escape
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -29,12 +33,43 @@ def wanted(cwd):
         return False
 
 
+GRACE_SECONDS = 30 * 60
+
+
+def pin_file(project):
+    return DATA / "listeners" / (project.replace("/", "_") + ".main")
+
+
 def pinned(project):
-    """Session id in listeners/<project>.main, if the user pinned the project's listener to one session."""
+    """Session id the project's listener is pinned to, or ""."""
     try:
-        return (DATA / "listeners" / (project.replace("/", "_") + ".main")).read_text().strip()
+        return pin_file(project).read_text().strip()
     except OSError:
         return ""
+
+
+def listener_running(session):
+    try:
+        return subprocess.run(["pgrep", "-f", f"vibi listen .*--session {re.escape(session)}"],
+                              capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return True  # cannot tell: leave the pin alone
+
+
+def last_active(project, session):
+    """Newest of: when the pin was written, when the session's transcript last changed."""
+    claude = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+    times = []
+    for f in [pin_file(project), *claude.glob(f"projects/*/{escape(session)}.jsonl")]:
+        try:
+            times.append(f.stat().st_mtime)
+        except OSError:
+            pass
+    return max(times, default=0)
+
+
+def alive(project, session):
+    return listener_running(session) or time.time() - last_active(project, session) < GRACE_SECONDS
 
 
 def register(project, session):
@@ -69,11 +104,13 @@ def main():
         project = os.environ.get("VIBI_LISTEN_PROJECT") or project_name(cwd)
         session = data.get("session_id") or ""
         main_session = pinned(project)
-        if main_session and session != main_session:
-            return 0  # another session owns this project's listener; do not take it over
+        if main_session and session != main_session and alive(project, main_session):
+            return 0  # the pinned session still owns this project's listener
         sess_arg = ""
         if session:
             register(project, session)
+            if session != main_session:
+                pin_file(project).write_text(session)
             sess_arg = f" --session {session}"
         cmd = f'{VIBI} listen --project "{project}"{sess_arg}'
         note = (f"Voice box: listen for messages the user leaves for this project by voice. Now run `{cmd}` with Bash "
