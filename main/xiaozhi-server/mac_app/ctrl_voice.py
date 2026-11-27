@@ -12,8 +12,11 @@ Spoken turns are shown only when they were recognised and acted on:
   is in a kept conversation. Speech ignored for not naming Vibi leaves only its "command" row.
 * acted on: a tool ran for it, or it got a real reply. "Didn't catch that" style replies are not real replies.
 * wake / bye chatter (nothing but greetings and Vibi's name, or the exit tool) is left out, with its replies.
-Replies nobody asked for just then (a finished task's result) are kept unless they are a fallback or a bare greeting.
-Typed turns are never filtered.
+Replies nobody asked for just then (a finished task's result) count unless they are a fallback or a bare greeting.
+Typed turns always count. Nothing is dropped here: each row says "recognized" (False for the rest) and the panel filters.
+
+"action" rows of history.jsonl (what the Actions tab listed) hang under the command they were done for ("actions"); the
+others become rows of their own (channel "action").
 """
 import bisect
 import functools
@@ -97,36 +100,62 @@ def _said(text) -> str:
     return text
 
 
-def _row(id_, ts, direction, body, input_, channel="", status="") -> dict:
+ACTION_TYPES = {"computer_use": "computer", "message_claude": "claude", "ask_claude": "claude", "ask_grok_bot": "grok",
+                "ask_gemini": "gemini"}
+
+
+def _clock(ts) -> str:
+    return datetime.fromtimestamp(ts).strftime("%b %d %H:%M") if ts else "?"
+
+
+def _action(a: dict) -> dict:
+    """One history "action" row, with the fields the Actions tab showed."""
+    return {"id": a.get("id"), "time": _clock(_num(a.get("ts"))), "title": a.get("name", ""), "status": a.get("status", "ok"),
+            "detail": " | ".join(x for x in (a.get("args"), a.get("result"), a.get("text")) if x),
+            "risky": bool(a.get("risky")), "rerun": bool(a.get("said")), "source": a.get("source", "")}
+
+
+def _loose(a: dict) -> dict:
+    name = str(a.get("name") or "action")
+    return {"id": f"act-{a.get('id')}", "source": "Vibi", "channel": "action", "direction": "", "ts": _num(a.get("ts")),
+            "time": _clock(_num(a.get("ts"))), "status": "", "summary": name, "body": name, "pair_id": "", "input": "",
+            "recognized": None, "actions": [_action(a)], "type": ACTION_TYPES.get(name, "vibi")}
+
+
+def _row(id_, ts, direction, body, input_, channel="", status="", recognized=None, actions=()) -> dict:
     channel = channel or input_ or "voice"
     if channel in ("voice", "typed") and direction == "from" and _norm(body).startswith(_norm(COMPUTER)):
         source, channel = "Claude", "computer-use"
     else:
         source = "Vibi"
     return {"id": str(id_), "source": source, "channel": channel, "direction": direction, "ts": ts,
-            "time": datetime.fromtimestamp(ts).strftime("%b %d %H:%M") if ts else "?", "status": status,
-            "summary": body.split("\n")[0][:140], "body": body, "pair_id": "", "input": input_}
+            "time": _clock(ts), "status": status, "summary": body.split("\n")[0][:140], "body": body, "pair_id": "",
+            "input": input_, "recognized": recognized, "actions": list(actions)}
 
 
 def _turns(data_dir: Path) -> list:
-    """User turns and Vibi's replies."""
+    """User turns (with their actions), Vibi's replies, and the actions done for no command."""
     history = sorted(_jsonl(data_dir / "history.jsonl"), key=lambda h: _num(h.get("ts")))
-    users, replies, marks = [], [], []
+    users, replies, marks, loose = [], [], [], []
     for h in history:
         kind, ts = h.get("kind"), _num(h.get("ts"))
         if kind == "command" and h.get("said"):
             users.append({"id": f"cmd-{h.get('id')}", "ts": ts, "text": h["said"], "input": "voice",
                           "heard": False, "tool": False, "chatter": h["said"] == WAKE_PROMPT or _chatter(h["said"])})
-        elif kind == "action" and h.get("source") not in ("schedule", "task"):
+        elif kind == "action":
             said = _said(h.get("said"))
-            for u in reversed(users):  # the command this was done for
+            for u in reversed(users if h.get("source") not in ("schedule", "task") else []):  # the command it was done for
                 if ts - u["ts"] > REPLY_WAIT_S:
+                    loose.append(h)
                     break
                 if _same(u["text"], said):
                     u["heard"] = True
                     u["tool"] = u["tool"] or h.get("name") not in NOT_TOOLS
                     u["chatter"] = u["chatter"] or h.get("name") == "handle_exit_intent"
+                    u.setdefault("actions", []).append(h)
                     break
+            else:
+                loose.append(h)
         elif kind == "reply" and h.get("text"):
             replies.append({"id": f"say-{h.get('id')}", "ts": ts, "text": h["text"], "owner": None, "live": True})
         elif kind == "typed":
@@ -190,14 +219,14 @@ def _turns(data_dir: Path) -> list:
     answered = {id(r["owner"]) for r in replies if r["owner"] and not FALLBACK.match(r["text"])}
     shown = {id(u) for u in users if u["input"] == "typed"
              or (u.get("heard") and not u.get("chatter") and (u.get("tool") or id(u) in answered))}
-    rows = [_row(u["id"], u["ts"], "from", u["text"], u["input"]) for u in users if id(u) in shown]
+    rows = [_row(u["id"], u["ts"], "from", u["text"], u["input"], recognized=id(u) in shown,
+                 actions=[_action(a) for a in u.get("actions", ())]) for u in users]
     for r in replies:
         asked = r["owner"]
         typed = asked is not None and asked["input"] == "typed"
-        if not typed and (FALLBACK.match(r["text"]) or (id(asked) not in shown if asked else GREETING.match(r["text"]))):
-            continue
-        rows.append(_row(r["id"], r["ts"], "to", r["text"], "typed" if typed else "voice"))
-    return rows
+        good = typed or not (FALLBACK.match(r["text"]) or (id(asked) not in shown if asked else GREETING.match(r["text"])))
+        rows.append(_row(r["id"], r["ts"], "to", r["text"], "typed" if typed else "voice", recognized=good))
+    return rows + [_loose(a) for a in loose]
 
 
 def _announcements(data_dir: Path) -> list:
@@ -232,7 +261,7 @@ def _board_input(data_dir: Path, rows: list) -> list:
                 return "typed" if req.get("reason") == "Vibi Ctrl chat" else ""
         return ""
 
-    return [{**r, "input": of(r)} for r in rows]
+    return [{**r, "input": of(r), "recognized": None, "actions": []} for r in rows]
 
 
 def merge(data_dir: Path, board_rows: list) -> list:
@@ -247,7 +276,9 @@ def merge(data_dir: Path, board_rows: list) -> list:
             near = [t for t in turns if abs(t["ts"] - r["ts"]) < 1800]
             if any(t["direction"] == "to" and _same(t["body"], q[2]) for t in near):
                 continue
-            turns = [t for t in turns if not (t in near and t["direction"] == "from" and _same(t["body"], q[1]))]
+            asked = [t for t in near if t["direction"] == "from" and _same(t["body"], q[1])]
+            r = {**r, "actions": [a for t in asked for a in t["actions"]]}
+            turns = [t for t in turns if t not in asked]
         kept.append(r)
     rows = kept + turns + _announcements(data_dir)
     rows.sort(key=lambda r: -r["ts"])  # stable: board pairs keep their order

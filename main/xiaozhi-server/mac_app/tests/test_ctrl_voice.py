@@ -51,7 +51,8 @@ def _view(data, **kw):  # oldest first, as the chat draws it
 def test_live_voice_turns_and_spoken_replies(tmp_path):
     data = _setup(tmp_path, history=[_h(1, 60, "command", "what time is it"), _sent(1, 60, "what time is it"), _h(2, 59, "reply", text="It is noon."),
                                      _h(3, 30, "action", "ignored"), _h(4, 20, "command", "Hey, hello there")])
-    assert _view(data) == [("from", "voice", "what time is it"), ("to", "voice", "It is noon.")]
+    assert _view(data) == [("from", "voice", "what time is it"), ("to", "voice", "It is noon."),
+                           ("", "", "action")]  # an action run for no command stands on its own
     assert {r["type"] for r in be.messages(data)} == {"vibi"}
 
 

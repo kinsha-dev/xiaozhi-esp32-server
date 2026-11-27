@@ -55,6 +55,8 @@ _SOURCE_TYPES = {"Claude": "claude", "Grok Bot": "grok", "Gemini": "gemini", "Vi
 def message_type(row: dict) -> str:
     """The Chat tab's type filter value for one board row."""
     source, channel = str(row.get("source") or ""), str(row.get("channel") or "")
+    if channel == "action":
+        return str(row.get("type") or "vibi")
     if channel == "computer-use":
         return "computer"
     if channel == "job-hunt":
@@ -72,11 +74,13 @@ def _has_direction(row: dict, direction: str) -> bool:
 
 
 def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "all", direction: str = "all",
-             input: str = "all") -> list:
+             input: str = "all", action: str = "recognized") -> list:
     """Every conversation with outside apps (Grok Bot, Claude, phone apps, WhatsApp, job hunt), newest first, each with a
-    category and a type. Only the last `hours` hours (0 = everything), filtered by `type` (a message_type value,
-    "conversation" or "all") `direction` ("to" Vibi, "from" you, or "all") and `input` ("voice", "typed" or "all") before the limit. Voice and
-    typed turns, spoken replies and announcements are merged in (ctrl_voice). Read through the voice box repo's message_board module, found next to the data dir."""
+    category and a type. Only the last `hours` hours (0 = everything), filtered before the limit by `type` (a
+    message_type value, "conversation", "actions" = rows with actions, or "all"), `direction` ("to" Vibi, "from" you, or
+    "all"), `input` ("voice", "typed" or "all") and `action` ("recognized" leaves out unrecognized voice turns,
+    "unrecognized" shows only those, "all" both). Voice and typed turns, spoken replies, actions and announcements are
+    merged in (ctrl_voice). Read through the voice box repo's message_board module, found next to the data dir."""
     import importlib.util
 
     mod_path = Path(os.environ.get("VIBI_MESSAGE_BOARD") or Path(data_dir).parent / "server" / "message_board.py")
@@ -90,9 +94,16 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
         cutoff = time.time() - hours * 3600
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
     rows = [{**r, "type": message_type(r)} for r in rows]
-    if type != "all":
-        wanted = CONVERSATION_TYPES if type == "conversation" else (type,)
-        rows = [r for r in rows if r["type"] in wanted]
+    if type == "actions":
+        rows = [r for r in rows if r["actions"]]
+    elif type == "conversation":
+        rows = [r for r in rows if r["type"] in CONVERSATION_TYPES and r.get("channel") != "action"]
+    elif type != "all":
+        rows = [r for r in rows if r["type"] == type]
+    if action == "recognized":
+        rows = [r for r in rows if r["recognized"] is not False]
+    elif action == "unrecognized":
+        rows = [r for r in rows if r["recognized"] is False]
     if input != "all":
         rows = [r for r in rows if r["input"] == input]
     if direction != "all":

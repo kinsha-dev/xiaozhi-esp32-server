@@ -35,10 +35,14 @@ Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in 
 ("Conversations" = the first six), direction (to or from Vibi) and time range (last 72 hours or all time); the newest
 300 matches are shown and the choice is remembered. Long feed items start collapsed. Old `#board` links open Chat.
 
-**Only voice commands that were acted on** are shown: the server must have recorded that the speech went to the model or
-ran a tool (ignored background speech leaves only a "command" row), and a tool ran or Vibi gave a real reply. Left out:
-ignored or misheard speech, "didn't catch that" replies (matched on wording), and wake / bye chatter with its replies.
-Typed turns are never filtered.
+**Actions** (the former Actions tab) thread under the voice or typed command they ran for, with status, details,
+"asks first" and Rerun; actions run for no command (schedules, tasks, CLI) stand on their own. Old `#actions` links open
+Chat. The floating **Filter** button holds type (including "Actions"), action, voice / typed, direction and time.
+
+**Action: recognized** (the default) shows voice commands that were acted on: the server recorded that the speech went to
+the model or ran a tool, and a tool ran or Vibi gave a real reply. **Unrecognized** shows the rest: ignored or misheard
+speech, "didn't catch that" replies (matched on wording), and wake / bye chatter, with any actions they ran. **All** shows
+both. Typed turns and non-voice rows always count as recognized.
 
 **Voice and typed turns** are in the timeline too, labelled and filterable: what Vibi heard or you typed, its replies,
 announcements and reminders. They come from `data/history.jsonl`, `data/memory/conversations.jsonl` and the outbox.

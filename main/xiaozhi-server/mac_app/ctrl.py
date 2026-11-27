@@ -72,7 +72,8 @@ class CtrlPanel:
                 except ValueError:
                     hours = 48
                 data = be.messages(self.data_dir, hours=hours, type=query.get("type", "all"),
-                                   direction=query.get("direction", "all"), input=query.get("input", "all"))
+                                   direction=query.get("direction", "all"), input=query.get("input", "all"),
+                                   action=query.get("action", "recognized"))
             elif path == "/api/stealth" and method == "GET":
                 data = {"on": (self.data_dir / "stealth").exists()}
             elif path == "/api/stealth" and method == "POST":
