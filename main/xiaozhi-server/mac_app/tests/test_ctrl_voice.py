@@ -35,6 +35,10 @@ def _h(i, ago, kind, said="", text=None, name=""):
     return {"id": f"h{i}", "ts": NOW - ago, "kind": kind, "said": said, "text": text, "name": name}
 
 
+def _sent(i, ago, said):  # the server records this only for speech it accepted and sent to the model
+    return _h(f"llm{i}", ago, "action", said, name="llm_input")
+
+
 def _conv(ago, *turns):
     return {"ts": datetime.fromtimestamp(NOW - ago).strftime("%Y-%m-%d %H:%M"), "session": f"s{ago}",
             "turns": [{"role": r, "text": t} for r, t in turns]}
@@ -45,7 +49,7 @@ def _view(data, **kw):  # oldest first, as the chat draws it
 
 
 def test_live_voice_turns_and_spoken_replies(tmp_path):
-    data = _setup(tmp_path, history=[_h(1, 60, "command", "what time is it"), _h(2, 59, "reply", text="It is noon."),
+    data = _setup(tmp_path, history=[_h(1, 60, "command", "what time is it"), _sent(1, 60, "what time is it"), _h(2, 59, "reply", text="It is noon."),
                                      _h(3, 30, "action", "ignored"), _h(4, 20, "command", "Hey, hello there")])
     assert _view(data) == [("from", "voice", "what time is it"), ("to", "voice", "It is noon.")]
     assert {r["type"] for r in be.messages(data)} == {"vibi"}
@@ -53,7 +57,7 @@ def test_live_voice_turns_and_spoken_replies(tmp_path):
 
 def test_typed_commands_are_tagged_typed_with_their_reply(tmp_path):
     data = _setup(tmp_path, history=[
-        _h(1, 90, "typed", "open mail", "open mail", "vibi"), _h(2, 89, "command", "open mail"),
+        _h(1, 90, "typed", "open mail", "open mail", "vibi"), _h(2, 89, "command", "open mail"), _sent(2, 89, "open mail"),
         _h(3, 88, "reply", text="Opening mail."),
         _h(4, 50, "typed", "play news", "play news", "computer"), _h(5, 49, "command", "Use the computer to play news"),
         _h(6, 20, "typed", "not logged yet", "not logged yet", "vibi")])
@@ -64,17 +68,17 @@ def test_typed_commands_are_tagged_typed_with_their_reply(tmp_path):
 
 
 def test_finished_conversations_supply_replies_that_have_no_live_row(tmp_path):
-    data = _setup(tmp_path, history=[_h(1, 400, "command", "hi bibi"), _h(2, 390, "command", "read messages")],
-                  conversations=[_conv(300, ("user", "hi bibi"), ("assistant", "Hi Abi!"), ("user", "read messages"),
+    data = _setup(tmp_path, history=[_h(1, 400, "command", "open notes"), _h(2, 390, "command", "read messages")],
+                  conversations=[_conv(300, ("user", "open notes"), ("assistant", "Opening notes."), ("user", "read messages"),
                                        ("assistant", "No new messages."))])
-    assert [(d, b) for d, _, b in _view(data)] == [("from", "hi bibi"), ("to", "Hi Abi!"), ("from", "read messages"),
+    assert [(d, b) for d, _, b in _view(data)] == [("from", "open notes"), ("to", "Opening notes."), ("from", "read messages"),
                                                    ("to", "No new messages.")]
 
 
 def test_conversation_records_are_not_repeated_once_replies_are_live(tmp_path):
-    data = _setup(tmp_path, history=[_h(1, 400, "command", "hi"), _h(2, 399, "reply", text="Hello.")],
-                  conversations=[_conv(300, ("user", "hi"), ("assistant", "Hello."))])
-    assert [b for *_, b in _view(data)] == ["hi", "Hello."]
+    data = _setup(tmp_path, history=[_h(1, 400, "command", "add two and two"), _sent(1, 400, "add two and two"), _h(2, 399, "reply", text="Four.")],
+                  conversations=[_conv(300, ("user", "add two and two"), ("assistant", "Four."))])
+    assert [b for *_, b in _view(data)] == ["add two and two", "Four."]
 
 
 def test_announcements_and_reminders_and_stealth_rows(tmp_path):
@@ -133,3 +137,40 @@ def test_server_logs_each_reply_put_into_the_dialogue(monkeypatch):
         d.put(m)
     assert len(d.dialogue) == 5
     assert [(a, k["text"]) for a, k in seen] == [(("reply",), "Say confirm code [redacted] to send.")]
+
+
+def test_only_recognised_and_acted_on_voice_commands_are_shown(tmp_path):
+    away = "hi bibi [While the user was away 1 message arrived. Reply in English only.]"
+    data = _setup(tmp_path, history=[
+        _h(1, 900, "command", "We have a little handle for Olivia"),            # ignored speech: nothing recorded after it
+        _h(2, 800, "command", away), _sent(2, 800, away),                      # wake chatter, even with a tool and a greeting
+        _h(3, 799, "action", away, name="read_messages"), _h(4, 798, "reply", text="Hi Abi! How can I help?"),
+        _h(5, 700, "command", "Val ke in group one"), _sent(5, 700, "Val ke in group one"),      # misheard
+        _h(6, 699, "reply", text="That came through garbled. Could you say it again?"),
+        _h(7, 600, "command", "Number two"), _sent(7, 600, "Number two"),      # sent to the model, nothing came back
+        _h(8, 500, "command", "turn the TV up"), _h(9, 499, "action", "turn the TV up", name="tv_volume"),  # tool, no reply
+        _h(10, 498, "command", "some background talk"),                        # does not steal the reply below
+        _h(11, 400, "command", "open the pull request"), _sent(11, 400, "open the pull request"),
+        _h(12, 399, "command", "more noise from the TV"), _h(13, 398, "reply", text="Opening it in your browser."),
+        _h(14, 300, "command", "bye bibi"), _sent(14, 300, "bye bibi"), _h(15, 299, "action", "bye bibi", name="handle_exit_intent"),
+        _h(16, 298, "reply", text="Bye for now."),
+        _h(17, 200, "command", "what is two plus two"), _sent(17, 200, "what is two plus two"),
+        _h(18, 199, "reply", text="I'm not sure, but I'd say four."),
+        _h(19, 20, "reply", text="computer_use says: the video is playing.")])  # a result nobody asked for just now
+    assert [b for *_, b in _view(data)] == [
+        "turn the TV up", "open the pull request", "Opening it in your browser.", "what is two plus two",
+        "I'm not sure, but I'd say four.", "computer_use says: the video is playing."]
+
+
+def test_old_conversations_follow_the_same_rule(tmp_path):
+    data = _setup(tmp_path, history=[_h(1, 400, "command", "TV noise")], conversations=[_conv(
+        300, ("user", "hi bibi"), ("assistant", "Hey you. What can I do for you?"), ("user", "mumble mumble"),
+        ("assistant", "Didn't catch that."), ("user", "play the news"), ("assistant", "Playing the news."),
+        ("user", "thank you"), ("assistant", "Anytime."))])
+    assert [b for *_, b in _view(data)] == ["play the news", "Playing the news."]
+
+
+def test_typed_turns_are_never_filtered(tmp_path):
+    data = _setup(tmp_path, history=[_h(1, 90, "typed", "hi bibi", "hi bibi", "vibi"), _h(2, 89, "command", "hi bibi"),
+                                     _sent(2, 89, "hi bibi"), _h(3, 88, "reply", text="Hi! How can I help?")])
+    assert _view(data) == [("from", "typed", "hi bibi"), ("to", "typed", "Hi! How can I help?")]

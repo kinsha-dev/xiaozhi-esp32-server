@@ -35,6 +35,11 @@ Vibi, Todo list, job hunt, notifications, WhatsApp, mail digest, other apps) in 
 ("Conversations" = the first six), direction (to or from Vibi) and time range (last 72 hours or all time); the newest
 300 matches are shown and the choice is remembered. Long feed items start collapsed. Old `#board` links open Chat.
 
+**Only voice commands that were acted on** are shown: the server must have recorded that the speech went to the model or
+ran a tool (ignored background speech leaves only a "command" row), and a tool ran or Vibi gave a real reply. Left out:
+ignored or misheard speech, "didn't catch that" replies (matched on wording), and wake / bye chatter with its replies.
+Typed turns are never filtered.
+
 **Voice and typed turns** are in the timeline too, labelled and filterable: what Vibi heard or you typed, its replies,
 announcements and reminders. They come from `data/history.jsonl`, `data/memory/conversations.jsonl` and the outbox.
 Replies appear as they are given once the voice server runs this version (it logs `reply` rows); before that, only when a
