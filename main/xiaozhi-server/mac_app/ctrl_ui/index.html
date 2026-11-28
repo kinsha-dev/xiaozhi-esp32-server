@@ -73,11 +73,6 @@ async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="none";void e.offsetWidth;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
 function nav(){$("#nav").innerHTML=(TABS.length<2?[]:TABS).map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
 function go(k){window.speechSynthesis?.cancel();tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
-/* Icons for agents and features (select values + chat sources). Labels in CHAT_SURFACE stay plain for tests. */
-const ICONS={all:"∗",conversation:"◎",commands:"›",actions:"▸",claude:"✦",grok:"⚡",gemini:"✧",siri:"◎",computer:"▣",vibi:"◉",todo:"☑",note:"✎",jobs:"⧉",notifications:"⚑",whatsapp:"✆",mail:"✉",other:"·",recognized:"✓",unrecognized:"?",voice:"◈",typed:"⌨",to:"↓",from:"↑","72":"◷","0":"∞"};
-const SOURCE_ICON={"Claude":"claude","Grok Bot":"grok","Grok":"grok","Gemini":"gemini","Siri":"siri","Todo":"todo","Vibi":"vibi","Computer use":"computer","WhatsApp":"whatsapp"};
-const iconMark=k=>ICONS[k]?`<span class="ico" aria-hidden="true">${ICONS[k]}</span>`:"";
-const iconForSource=s=>iconMark(SOURCE_ICON[s]||"");
 
 /* ---- Chat tab: an A2UI v1.0 surface (https://a2ui.org). The "agent" side below emits createSurface / updateDataModel messages
    (flat component list, @path bindings, event actions, list template); A2ui renders them with this page's own components.
@@ -108,6 +103,11 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},agent:{"@path":"agent"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"},item:{"@path":"item"},wa:{"@path":"wa"},media:{"@path":"media"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Siri":"Siri","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini","Siri":"siri"};
+/* Icons for agents and features (select values + chat sources). Labels in CHAT_SURFACE stay plain for tests. */
+const ICONS={all:"∗",conversation:"◎",commands:"›",actions:"▸",claude:"✦",grok:"⚡",gemini:"✧",siri:"◎",computer:"▣",vibi:"◉",todo:"☑",note:"✎",jobs:"⧉",notifications:"⚑",whatsapp:"✆",mail:"✉",other:"·",recognized:"✓",unrecognized:"?",voice:"◈",typed:"⌨",to:"↓",from:"↑","72":"◷","0":"∞"};
+const SOURCE_ICON={"Claude":"claude","Grok Bot":"grok","Grok":"grok","Gemini":"gemini","Siri":"siri","Todo":"todo","Vibi":"vibi","Computer use":"computer","WhatsApp":"whatsapp"};
+const iconMark=k=>ICONS[k]?`<span class="ico" aria-hidden="true">${ICONS[k]}</span>`:"";
+const iconForSource=s=>iconMark(SOURCE_ICON[s]||"");
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
 function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
   for(const r of m.slice().reverse()){const first=out.length;add(r);
