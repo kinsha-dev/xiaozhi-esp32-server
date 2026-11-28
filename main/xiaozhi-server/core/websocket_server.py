@@ -48,7 +48,7 @@ def _publish_boards():
         pass
 
 
-from core import board_heartbeat
+from core import board_heartbeat, lan_guard
 from core.connection import ConnectionHandler
 from core.auth import AuthManager, AuthenticationError
 from core.utils.modules_initialize import initialize_modules
@@ -82,6 +82,7 @@ class WebSocketServer:
         self.auth_enable = auth_config.get("enabled", False)
         # device whitelist
         self.allowed_devices = set(auth_config.get("allowed_devices", []))
+        self.trusted_devices = auth_config.get("trusted_devices") or []
         secret_key = self.config["server"]["auth_key"]
         expire_seconds = auth_config.get("expire_seconds", None)
         self.auth = AuthManager(secret_key=secret_key, expire_seconds=expire_seconds)
@@ -152,11 +153,14 @@ class WebSocketServer:
             board_heartbeat.beat(device_id)
             _boards.add(token)
             _publish_boards()
+        peer = websocket.remote_address
+        lock_watch = asyncio.create_task(lan_guard.enforce(websocket, peer[0] if peer else None))
         try:
             await handler.handle_connection(websocket)
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"Error handling the connection: {e}")
         finally:
+            lock_watch.cancel()
             if is_board:
                 _boards.discard(token)
                 _publish_boards()
@@ -186,6 +190,16 @@ class WebSocketServer:
 
     async def _handle_auth(self, websocket: websockets.ServerConnection):
         # authenticate first, then establish the connection
+        peer = websocket.remote_address
+        peer_ip = peer[0] if peer else None
+        headers = dict(websocket.request.headers)
+        if not lan_guard.allowed(peer_ip, headers, self.trusted_devices):
+            self.logger.bind(tag=TAG).warning(
+                f"Rejected connection from {peer_ip}: device-id {headers.get('device-id')!r}, "
+                f"client-id {headers.get('client-id')!r}. If this is your board, add that pair to "
+                "server.auth.trusted_devices in data/.config.yaml"
+            )
+            raise AuthenticationError("Device not trusted")
         if self.auth_enable:
             headers = dict(websocket.request.headers)
             device_id = headers.get("device-id", None)

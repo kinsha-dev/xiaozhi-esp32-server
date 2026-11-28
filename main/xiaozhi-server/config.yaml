@@ -31,6 +31,11 @@ server:
     # Whitelisted device IDs; these devices skip token verification
     allowed_devices:
       - "11:22:33:44:55:66"
+    # Devices on the network that may connect, matched by BOTH values (the server log prints them when it rejects one).
+    # This Mac is always allowed. Empty means no other device can connect.
+    trusted_devices: []
+    #  - device_id: "11:22:33:44:55:66"
+    #    client_id: "the board's UUID"
   # MQTT gateway for OTA delivery to devices, host:port as in the mqtt_gateway .env file
   mqtt_gateway: null
   # MQTT signature key used to generate MQTT connection passwords (see mqtt_gateway .env)
