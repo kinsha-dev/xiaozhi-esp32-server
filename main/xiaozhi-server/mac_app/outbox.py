@@ -26,6 +26,29 @@ def has_pending(path: Path) -> bool:
     return False
 
 
+def skip_pending(path: Path) -> None:
+    """Mark every pending row "skipped" so nothing reads it out later. Other lines are kept as they are."""
+    path = Path(path)
+    try:
+        lines = path.read_text().splitlines()
+        changed = False
+        for i, line in enumerate(lines):
+            try:
+                row = json.loads(line)
+                if row.get("status") != "pending":
+                    continue
+            except (ValueError, AttributeError):
+                continue
+            row["status"], changed = "skipped", True
+            lines[i] = json.dumps(row)
+        if changed:
+            tmp = path.with_suffix(".skip.tmp")
+            tmp.write_text("".join(line + "\n" for line in lines))
+            tmp.replace(path)
+    except OSError:
+        pass
+
+
 async def watch(path: Path, on_pending: Callable[[], None], interval: float = 4.0, stop: asyncio.Event = None):
     """Call on_pending() each time the outbox goes from no pending rows to some, and again every RETRY_S while rows stay
     pending (a session that died, e.g. when the server restarted, must not leave them stuck)."""
