@@ -92,15 +92,19 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     rows = ctrl_voice.merge(Path(data_dir), mod.messages(Path(data_dir)))
-    if hours and hours > 0:
+    from mac_app import ctrl_items  # notes, reminders and todos are entries of the same timeline
+    rows = [{**r, "type": message_type(r)} for r in rows] + ctrl_items.rows(Path(data_dir))
+    rows.sort(key=lambda r: -(r.get("ts") or 0))
+    if hours and hours > 0 and type != "note":  # picking Notes shows them all; open todos never age out
         cutoff = time.time() - hours * 3600
-        rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
-    rows = ctrl_threads.link([{**r, "type": message_type(r)} for r in rows])
+        rows = [r for r in rows if (r.get("ts") or 0) >= cutoff
+                or (r.get("channel") == "todo" and (r.get("item") or {}).get("done") is False)]
+    rows = ctrl_threads.link(rows)
     everything = rows
     if type in ("actions", "commands"):
         rows = [r for r in rows if r.get(type if type == "actions" else "command")]
     elif type == "conversation":
-        rows = [r for r in rows if r["type"] in CONVERSATION_TYPES and r.get("channel") != "action"]
+        rows = [r for r in rows if r["type"] in CONVERSATION_TYPES and r.get("channel") != "action" and not r.get("item")]
     elif type != "all":
         rows = [r for r in rows if r["type"] == type]
     if action == "recognized":

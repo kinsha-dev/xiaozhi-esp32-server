@@ -92,7 +92,7 @@ def test_chat_reply_is_filed_on_the_board(panel, monkeypatch):
     board = STORE.with_name("message_board.py")
     monkeypatch.setenv("VIBI_MESSAGE_BOARD", str(board))
     call(panel, "POST", "/api/chat", {"to": "todo", "text": "call mom"})
-    rows = [r for r in be.messages(panel.data_dir) if r["source"] == "Todo"]
+    rows = [r for r in be.messages(panel.data_dir) if r["source"] == "Todo" and not r.get("item")]
     assert len(rows) == 1 and "Q: call mom" in rows[0]["body"] and "A: Added" in rows[0]["body"]
 
 
@@ -105,6 +105,6 @@ def test_without_the_store(tmp_path, monkeypatch):
     assert call(p, "POST", "/api/chat", {"to": "claude", "text": "todo: x"})[1]["to"] == "claude"
 
 
-def test_ui_has_the_tab():
+def test_ui_has_todos_in_chat():
     html = UI.read_text()
-    assert '["todo","Todo"]' in html and "/api/todos" in html and '{label:"Todo list",value:"todo"}' in html
+    assert '["todo","Todo"]' not in html and "/api/todos" in html and '{label:"Todo list",value:"todo"}' in html

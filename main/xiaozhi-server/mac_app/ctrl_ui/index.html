@@ -39,9 +39,9 @@ button.act:hover{border-color:var(--acc)}
 <header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
-const T="__TOKEN__",TABS=[["chat","Chat"],["notes","Notes"],["todo","Todo"],["components","Components"]];
-const OLD_TABS={board:"chat",actions:"chat",commands:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board, #actions, #commands links open Chat
-let linkFilter=location.hash=="#commands"?{type:["commands"],action:["all"],hours:["0"]}:null;  // the old Commands list
+const T="__TOKEN__",TABS=[["chat","Chat"],["components","Components"]];
+const OLD_TABS={board:"chat",actions:"chat",commands:"chat",notes:"chat",todo:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board, #actions, #commands links open Chat
+let linkFilter={"#commands":{type:["commands"],action:["all"],hours:["0"]},"#notes":{type:["note"],hours:["0"]},"#todo":{type:["todo"],hours:["0"]}}[location.hash]||null;  // the old Commands, Notes and Todo lists
 let tab=tabKey(location.hash.slice(1))||tabKey(localStorage.getItem("vctrlTab"))||"chat",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
@@ -55,13 +55,13 @@ function go(k){window.speechSynthesis?.cancel();tab=k;try{localStorage.setItem("
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
  {id:"root",component:"Column",children:["filters","feed","form"]},
  {id:"filters",component:"Row",align:"center",children:["fType","fAct","fInput","fDir","fRange"]},
- {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Commands",value:"commands"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
+ {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Commands",value:"commands"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Notes",value:"note"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
  {id:"fAct",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Action",value:{"@path":"/filter/action"},action:{event:{name:"filter"}},options:[{label:"Action: recognized",value:"recognized"},{label:"Action: unrecognized",value:"unrecognized"},{label:"Action: all",value:"all"}]},
  {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
  {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
  {id:"fRange",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Time range",value:{"@path":"/filter/hours"},action:{event:{name:"filter"}},options:[{label:"Last 72 hours",value:"72"},{label:"All time",value:"0"}]},
  {id:"form",component:"Row",align:"end",children:["to","text","micBtn","pasteBtn","fileBtn","fileName","fileClear","send"]},
- {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"}]},
+ {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"},{label:"Note (save)",value:"note"}]},
  {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
  {id:"micBtn",component:"Button",child:"micLbl",action:{event:{name:"mic"}}},
  {id:"micLbl",component:"Text",text:"🎤 Mic"},
@@ -75,7 +75,7 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"}}],
+ {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"},item:{"@path":"item"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
@@ -84,6 +84,7 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
     if(r.nest)out.slice(first).forEach(b=>b.nest=true);else if(r.thread&&out[first])out[first].meta="Original conversation · "+out[first].meta}
   function add(r){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=(r.nest&&r.said)||r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
     const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>[...p,r.log].filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
+    if(r.channel=="note"||r.channel=="reminder"||r.item){out.push({meta:line(r.category,r.time,r.status),text:body,variant:"other",clamp:String(r.id),...(r.item?{item:r.item}:{})});return}
     if(r.channel=="action"){out.push({variant:"actions",actions:acts});return}
     const command=r.command?{command:{...r.command,id:String(r.id),time:r.time,status:r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:missed||(r.input=="typed"?"typed":"recognized")}}:{};
     if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
@@ -184,6 +185,7 @@ const A2ui={surfaces:{},onEvent:null,expanded:new Set(),
       const ims=(Array.isArray(v(c.images))?v(c.images):[]).map(httpUrl).filter(Boolean).slice(0,8),lks=(Array.isArray(v(c.links))?v(c.links):[]).filter(l=>l&&httpUrl(l.url)).slice(0,8);
       if(ims.length){const h=document.createElement("div");h.className="rich rimgs";for(const u of ims){const im=document.createElement("img");im.src=u;im.alt="";im.referrerPolicy="no-referrer";im.loading="lazy";h.append(im)}el.append(h)}
       if(lks.length){const h=document.createElement("div");h.className="rich";for(const l of lks){const a=document.createElement("a");a.href=l.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=String(l.title||l.url);a.style.cssText="display:block;color:var(--acc)";h.append(a)}el.append(h)}
+      const it=v(c.item);if(it)el.append(itemBar(it));
       const cm=v(c.command);if(cm)el.append(...commandBar(cm,me.expanded));
       const rt=v(c.reply);if(rt){Reply.attach(el,rt);el.append(Reply.button(rt))}});break;
    case"Card":el.className="rcard";if(c.child)el.append(me.node(sf,c.child,scope));break;
@@ -261,7 +263,7 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
-  toast(r.to=="todo"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
+  toast(r.to=="todo"||r.to=="note"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 let chatSeq=0;
 const defaultFilter=()=>({type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]});
 function filterButton(){const b=$("#fbtn"),f=A2ui.surfaces.chat.data.filter,d=defaultFilter(),n=Object.keys(d).filter(k=>f[k][0]!=d[k][0]).length;if(!b)return;b.textContent="Filter"+(n?` (${n})`:"")}
@@ -274,44 +276,38 @@ function searchShell(){const s=document.createElement("section");s.id="search";s
   const f=s.querySelector("form");f.onsubmit=e=>{e.preventDefault();runSearch()};f.querySelector("select").onchange=()=>runSearch();f.lastElementChild.onclick=()=>searchOpen(false);
   s.onkeydown=e=>{if(e.key=="Escape"){const open=e.target.closest(".sedit");open?open.remove():searchOpen(false)}};return s}
 function searchOpen(on){const s=$("#search");if(!s)return;s.hidden=!on;if(on){Reply.close();filterOpen(false);s.querySelector("input").focus()}}
+/* Reply to a note or todo with its new text, which replaces it. */
+function editor(el,h,saved){if(el.querySelector(".sedit"))return;const w=document.createElement("div");w.className="sedit";
+  w.innerHTML=`<textarea rows="${h.kind=="note"?6:2}" aria-label="New text"></textarea><button type="button" class="act pri">Save</button> <button type="button" class="act">Cancel</button>`;
+  const t=w.querySelector("textarea"),[save,cancel]=w.querySelectorAll("button");t.value=h.text;cancel.onclick=()=>w.remove();w.onkeydown=e=>{if(e.key=="Escape"){e.stopPropagation();w.remove()}};
+  save.onclick=async()=>{save.disabled=true;try{const r=await api("/api/edit",{kind:h.kind,id:h.id,text:t.value,old:h.text});if(r.error){toast(r.error);return}
+      toast(h.kind=="note"?"Note saved":"Todo saved");w.remove();saved(r.item)}catch(e){toast("Could not save")}finally{save.disabled=false}};
+  el.append(w);t.focus()}
+function itemBar(it){const bar=document.createElement("div");bar.className="cmdbar";bar.style.flexWrap="wrap";
+  const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent=text;b.onclick=run;bar.append(b)};
+  const todo=async op=>{const r=await api("/api/todos",{op,id:it.id});if(r.error)toast(r.error);load()};
+  button("↩ Reply to edit",()=>editor(bar.parentNode,it,()=>load()));
+  if(it.kind=="todo"){button(it.done?"Reopen":"Mark done",()=>todo(it.done?"reopen":"done"));button("Delete",()=>confirm("Delete this todo?")&&todo("delete"))}
+  return bar}
 async function runSearch(){const s=$("#search"),box=$("#sres"),q=s.querySelector("input").value.trim(),seq=++searchSeq;if(!q){box.replaceChildren();return}
   const r=await api("/api/search?"+new URLSearchParams({q,scope:s.querySelector("select").value}));if(seq!=searchSeq)return;
-  if(r.error||!r.results.length){box.innerHTML=`<div class="empty">${esc(r.error||"Nothing found")}</div>`;return}
-  box.replaceChildren(...r.results.map(searchResult))}
+  const say=t=>{const d=document.createElement("div");d.className="meta";d.textContent=t;return d};
+  if(r.error||!r.results.length){box.innerHTML=`<div class="empty">${esc(r.error||"Nothing found")}</div>`;if(r.note)box.append(say(r.note));return}
+  box.replaceChildren(...(r.note?[say(r.note)]:[]),...r.results.map(searchResult))}
 function searchResult(h){const el=document.createElement("div");el.className="bub";el.innerHTML=`<div class="meta">${esc(h.meta)}</div><div class="body">${esc(h.text)}</div>`;
   const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent=text;b.onclick=run;el.append(b);return b},body=el.querySelector(".body");
   if(h.text.length>400){body.classList.add("clamp");const more=button("Expand",()=>{more.textContent=body.classList.toggle("clamp")?"Expand":"Collapse"});more.style.marginRight="12px"}
-  if(h.kind!="chat")button("↩ Reply to edit",()=>{if(el.querySelector(".sedit"))return;const w=document.createElement("div");w.className="sedit";
-    w.innerHTML=`<textarea rows="${h.kind=="note"?6:2}" aria-label="New text"></textarea><button type="button" class="act pri">Save</button> <button type="button" class="act">Cancel</button>`;
-    const t=w.querySelector("textarea"),[save,cancel]=w.querySelectorAll("button");t.value=h.text;cancel.onclick=()=>w.remove();
-    save.onclick=async()=>{save.disabled=true;try{const r=await api("/api/edit",{kind:h.kind,id:h.id,text:t.value,old:h.text});if(r.error){toast(r.error);return}
-        toast(h.kind=="note"?"Note saved":"Todo saved");el.replaceWith(searchResult({...h,text:r.item.text}))}catch(e){toast("Could not save")}finally{save.disabled=false}};
-    el.append(w);t.focus()});
+  if(h.kind!="chat")button("↩ Reply to edit",()=>editor(el,h,r=>el.replaceWith(searchResult({...h,text:r.text}))));
   return el}
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter={...savedFilter(),...linkFilter};linkFilter=null;A2ui.mount("chat",$("#chatHost"));
     const b=document.createElement("button");b.id="fbtn";b.type="button";b.className="act";b.onclick=()=>filterOpen(!$("#chatHost").classList.contains("fopen"));$("#chatHost").append(b);filterOpen(false);filterButton();
     const find=document.createElement("button");find.id="sbtn";find.type="button";find.className="act";find.textContent="🔍 Search";find.onclick=()=>searchOpen(true);$("#chatHost").append(find,searchShell())}
+  if($(".chatfeed .sedit"))return;  // a redraw would drop a half-typed edit
   const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],action:f.action[0],input:f.input[0],direction:f.direction[0],hours:f.hours[0]});
   const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat")A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}
-/* ---- Todo tab: data/todos.jsonl, also written by the voice tools and the Chat tab; polled every 2 s so those show up live.
-   The form is built once and only the list is redrawn, and only when it changed, so typing is never interrupted. ---- */
-let todoSeq=0;
-const todoRow=t=>`<tr><td><input type="checkbox" data-id="${esc(t.id)}" ${t.done?"checked":""} aria-label="${t.done?"Reopen":"Mark done"}: ${esc(t.text)}"></td><td class="tx${t.done?" done":""}">${esc(t.text)}<div class="meta">${esc([t.source,t.done?"done "+t.done_at.slice(0,16):t.created.slice(0,16)].filter(Boolean).join(" · "))}</div></td><td class="x"><button class="act" data-del="${esc(t.id)}">Delete</button></td></tr>`;
-function todoShell(){if($("#todos"))return;
-  $("#main").innerHTML='<form id="todoForm"><input id="todoText" maxlength="500" autocomplete="off" placeholder="Add a todo…" aria-label="New todo"><button class="act pri">Add</button></form><div id="todos"></div>';
-  $("#todoForm").onsubmit=async e=>{e.preventDefault();const i=$("#todoText"),text=i.value.trim();if(text&&await todoOp({op:"add",text}))i.value=""};
-  $("#todos").onchange=e=>{const id=e.target.dataset.id;if(id)todoOp({op:e.target.checked?"done":"reopen",id})};
-  $("#todos").onclick=e=>{const id=e.target.dataset.del;if(id&&confirm("Delete this todo?"))todoOp({op:"delete",id})}}
-async function todoOp(body){const r=await api("/api/todos",body);if(r.error)toast(r.error);const box=$("#todos");if(box)delete box.dataset.v;await loadTodos();return!r.error}
-async function loadTodos(){const seq=++todoSeq;todoShell();const r=await api("/api/todos"),box=$("#todos");
-  if(tab!="todo"||seq!=todoSeq||!box)return;const v=JSON.stringify(r);if(box.dataset.v==v)return;box.dataset.v=v;
-  if(r.error){box.innerHTML=`<div class="empty">${esc(r.error)}</div>`;return}
-  const open=r.todos.filter(t=>!t.done).reverse(),done=r.todos.filter(t=>t.done).sort((a,b)=>b.done_at.localeCompare(a.done_at));
-  box.innerHTML=(open.length?`<table>${open.map(todoRow).join("")}</table>`:'<div class="empty">No open todos. Add one here, say “add a todo …” to Vibi, or send it from the Chat tab.</div>')+(done.length?`<h2 class="meta">Done (${done.length})</h2><table>${done.map(todoRow).join("")}</table>`:"")}
 async function load(){
   document.body.classList.toggle("chat",tab=="chat");
   if(tab=="chat")return loadChat();
-  if(tab=="todo")return loadTodos();
   if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
   <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
   const rows=await api("/api/history?kind="+tab);
@@ -325,5 +321,5 @@ async function loadStealth(){const r=await api("/api/stealth");$("#stealth").che
 async function setStealth(on){const r=await api("/api/stealth",{on});toast(on?"Stealth on: no mic, no voice. Type commands in the Chat tab.":"Stealth off");$("#stealth").checked=!!r.on}
 async function loadStyle(){const s=await api("/api/style");$("#style").innerHTML=s.styles.map(x=>`<option ${x==s.style?"selected":""}>${x}</option>`).join("")}
 async function setStyle(v){const r=await api("/api/style",{style:v});toast("Voice style: "+r.style+(r.error?" ("+r.error+")":""))}
-nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden&&tab!="todo")load()},5000);setInterval(()=>{if(!document.hidden&&tab=="todo")loadTodos()},2000);
+nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
 </script></body></html>
