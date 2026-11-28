@@ -55,13 +55,13 @@ function go(k){window.speechSynthesis?.cancel();tab=k;try{localStorage.setItem("
 const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vibi:ctrl-chat",components:[
  {id:"root",component:"Column",children:["filters","feed","form"]},
  {id:"filters",component:"Row",align:"center",children:["fType","fAct","fInput","fDir","fRange"]},
- {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Commands",value:"commands"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Notes",value:"note"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
+ {id:"fType",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Message type",value:{"@path":"/filter/type"},action:{event:{name:"filter"}},options:[{label:"All types",value:"all"},{label:"Conversations",value:"conversation"},{label:"Commands",value:"commands"},{label:"Actions",value:"actions"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Siri",value:"siri"},{label:"Computer use",value:"computer"},{label:"Vibi",value:"vibi"},{label:"Todo list",value:"todo"},{label:"Notes",value:"note"},{label:"Job hunt",value:"jobs"},{label:"Notifications",value:"notifications"},{label:"WhatsApp",value:"whatsapp"},{label:"Mail digest",value:"mail"},{label:"Other",value:"other"}]},
  {id:"fAct",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Action",value:{"@path":"/filter/action"},action:{event:{name:"filter"}},options:[{label:"Action: recognized",value:"recognized"},{label:"Action: unrecognized",value:"unrecognized"},{label:"Action: all",value:"all"}]},
  {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
  {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
  {id:"fRange",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Time range",value:{"@path":"/filter/hours"},action:{event:{name:"filter"}},options:[{label:"Last 72 hours",value:"72"},{label:"All time",value:"0"}]},
- {id:"form",component:"Row",align:"end",children:["to","text","micBtn","pasteBtn","fileBtn","fileName","fileClear","send"]},
- {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"},{label:"Note (save)",value:"note"}]},
+ {id:"form",component:"Row",align:"end",children:["to","text","micBtn","pasteBtn","fileBtn","fileName","fileClear","siriBtn","send"]},
+ {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Siri",value:"siri"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"},{label:"Note (save)",value:"note"}]},
  {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
  {id:"micBtn",component:"Button",child:"micLbl",action:{event:{name:"mic"}}},
  {id:"micLbl",component:"Text",text:"🎤 Mic"},
@@ -72,12 +72,14 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"fileBtn",component:"Button",child:"fileLbl",action:{event:{name:"pick_file"}}},
  {id:"fileLbl",component:"Text",text:"📎 File"},
  {id:"fileName",component:"Text",variant:"caption",text:{"@path":"/chat/fileName"}},
+ {id:"siriBtn",component:"Button",child:"siriLbl",action:{event:{name:"send_siri",context:{text:{"@path":"/chat/text"}}}}},
+ {id:"siriLbl",component:"Text",text:"Send to Siri"},
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
  {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"},item:{"@path":"item"},wa:{"@path":"wa"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
-const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
+const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Siri":"Siri","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini","Siri":"siri"};
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
 function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
   for(const r of m.slice().reverse()){const first=out.length;add(r);
@@ -89,7 +91,7 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
       out.push({meta:line(r.category,r.time,r.status),text:body,variant:sent?"me":"other",clamp:String(r.id),wa:{contact:name||""}});return}
     if(r.channel=="action"){out.push({variant:"actions",actions:acts});return}
     const command=r.command?{command:{...r.command,id:String(r.id),time:r.time,status:r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:missed||(r.input=="typed"?"typed":"recognized")}}:{};
-    if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
+    if(r.source=="Gemini"||r.source=="Todo"||r.source=="Siri"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
       if(q){if(direction!="to"){out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me",...command});if(acts)out.push({variant:"thread",actions:acts})}if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});return}}
     const extra={...(CLAMPED.includes(r.type)?{clamp:String(r.id)}:{}),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})};
     const status=r.source=="Claude"&&r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status;
@@ -261,13 +263,14 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="clear_file"){chatFile.value="";return chatFile.onchange()}
   if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
   if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||r.note||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}
+  if(name=="send_siri"){name="send_chat";ctx={text:ctx.text,to:["siri"]}}
   if(name!="send_chat")return;
   const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
-  if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
+  if(f){if(to=="computer"||to=="siri"){toast(to=="siri"?"Files can't be sent to Siri":"Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
   searchOpen(false);
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
-  toast(r.to=="todo"||r.to=="note"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
+  toast(r.to=="siri"?(r.note||"Sent to Siri").split("\n")[0]:r.to=="todo"||r.to=="note"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 let chatSeq=0;
 const defaultFilter=()=>({type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]});
 function filterButton(){const b=$("#fbtn"),f=A2ui.surfaces.chat.data.filter,d=defaultFilter(),n=Object.keys(d).filter(k=>f[k][0]!=d[k][0]).length;if(!b)return;b.textContent="Filter"+(n?` (${n})`:"")}

@@ -127,6 +127,11 @@ class CtrlPanel:
                 else:
                     (self.data_dir / "stealth").write_text("1") if on else (self.data_dir / "stealth").unlink(missing_ok=True)
                 data = {"ok": True, "on": on}
+            elif path == "/api/chat" and method == "POST" and str(body.get("to") or "") == "siri":
+                try:
+                    data = be.siri_chat(self.data_dir, str(body.get("text", "")), body.get("file"))
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
             elif path == "/api/chat" and method == "POST" and body.get("to") == "vibi":
                 text = " ".join(str(body.get("text", "")).split())
                 if not text or len(text) > be.CHAT_LIMIT:
