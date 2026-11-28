@@ -16,7 +16,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from mac_app import ctrl_backend as be
+from mac_app import ctrl_items
 from mac_app import ctrl_search
+from mac_app import ctrl_whatsapp
 from mac_app.ctrl_passkey import JS, LOGIN_HTML, Passkeys
 
 UI = Path(__file__).with_name("ctrl_ui") / "index.html"
@@ -52,6 +54,14 @@ class CtrlPanel:
                     return 200, "application/json", json.dumps(be.transcribe(str(body.get("audio", "")))).encode()
                 except ValueError as e:
                     return 400, "application/json", json.dumps({"error": str(e)}).encode()
+            if path == "/api/chat" and method == "POST" and body.get("to") == "note":
+                try:
+                    if body.get("file"):
+                        raise ValueError("files can't be added to a note")
+                    ctrl_items.add_note(self.data_dir, str(body.get("text", "")))
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
+                return 200, "application/json", b'{"id": "", "to": "note", "note": "Note saved"}'
             if path == "/api/chat" and method == "POST":
                 try:
                     todo = be.todo_chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")), body.get("file"))
@@ -59,10 +69,20 @@ class CtrlPanel:
                     return 400, "application/json", json.dumps({"error": str(e)}).encode()
                 if todo:
                     return 200, "application/json", json.dumps(todo).encode()
+            if path == "/api/whatsapp" and method == "POST":
+                try:
+                    contact = str(body.get("contact", ""))
+                    if body.get("confirmed") is True:
+                        out = ctrl_whatsapp.send(self.data_dir, contact, str(body.get("text", "")), str(body.get("phone", "")))
+                    else:  # who would get it, for the user to confirm
+                        out = ctrl_whatsapp.resolve(self.data_dir, contact)
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
+                return 200, "application/json", json.dumps(out).encode()
             if path in ("/api/search", "/api/edit"):
                 try:
                     if path == "/api/search" and method == "GET":
-                        data = {"results": ctrl_search.search(self.data_dir, query.get("q", ""), query.get("scope", "all"))}
+                        data = ctrl_search.search(self.data_dir, query.get("q", ""), query.get("scope", "all"))
                     elif path == "/api/edit" and method == "POST":
                         data = {"item": ctrl_search.edit(self.data_dir, *(str(body.get(k, "")) for k in ("kind", "id", "text", "old")))}
                     else:
