@@ -132,15 +132,15 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
    the reply goes through /api/chat with the quoted response in front as context. One menu is open at a time, and its element
    is moved back under the selected response after each redraw, so a half-typed reply survives the 5 s refresh. ---- */
 const REPLY_FROM={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Vibi":"Vibi"},QUOTE_MAX=1000,CHAT_MAX=4000;
-const replyTarget=(r,text)=>r.direction=="to"&&r.status!="running"&&REPLY_FROM[r.source]&&text?{key:String(r.id),who:REPLY_FROM[r.source],time:r.time,to:CHAT_TO[r.source]||"claude",quote:String(text)}:null;
+const replyTarget=(r,text)=>r.direction=="to"&&r.status!="running"&&REPLY_FROM[r.source]&&text?{key:String(r.id),who:REPLY_FROM[r.source],time:r.time,to:CHAT_TO[r.source]||(r.source=="Vibi"?"vibi":"claude"),quote:String(text)}:null;
 const Reply={target:null,el:null,busy:false,
  open(t){if(this.target?.key!=t.key){this.target=t;A2ui.process({version:"1.0",createSurface:{surfaceId:"reply",catalogId:"vibi:ctrl-chat",components:[
     {id:"root",component:"Column",children:["quote","text","bar","hint"]},
-    {id:"hint",component:"Text",variant:"caption",text:"Computer use gets only your text and the first link in the quote; Vibi asks out loud before anything risky."},
+    {id:"hint",component:"Text",variant:"caption",text:"Claude, Grok and Gemini get the quoted message. Vibi and Siri get your words; Todo and Computer use also get the first link. Leave the reply empty to save it as a todo or note."},
     {id:"quote",component:"Text",variant:"caption",text:{"@path":"/reply/quote"}},
     {id:"text",component:"TextField",label:"Reply",placeholder:"Reply…",variant:"longText",value:{"@path":"/reply/text"}},
     {id:"bar",component:"Row",align:"center",children:["to","send","cancel"]},
-    {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Reply to",value:{"@path":"/reply/to"},options:[{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"}]},
+    {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Reply to",value:{"@path":"/reply/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Siri",value:"siri"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"},{label:"Note (save)",value:"note"}]},
     {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_reply",context:{to:{"@path":"/reply/to"},text:{"@path":"/reply/text"}}}}},
     {id:"sendLbl",component:"Text",text:"Send reply"},
     {id:"cancel",component:"Button",child:"cancelLbl",action:{event:{name:"cancel_reply"}}},
@@ -161,10 +161,17 @@ const Reply={target:null,el:null,busy:false,
   if(room<1)return null;return`${head}\n> ${(q.length>room?q.slice(0,room)+"…":q).replace(/\n/g,"\n> ")}\n${body}`},
  task(t,text){  // computer use takes one short task (300 chars) and drives the Mac: pass the user's words plus a link, not the bot's text
   const link=(t.quote.match(/https?:\/\/[^\s<>"'()\[\]]+/)||[""])[0].replace(/[.,;:!?]+$/,""),task=text.replace(/\s+/g," ")+(link?` (link: ${link})`:"");return task.length<=280?task:null},
- async send(ctx){const text=String(ctx.text||"").trim(),to=(ctx.to||[])[0],t=this.target;if(!text||!t||this.busy)return;
-  const cu=to=="computer",full=cu?this.task(t,text):this.compose(t,text);if(!full||full.length>CHAT_MAX){toast(cu?"Keep a computer task short (280 characters, link included)":"Reply too long");return}
-  this.busy=true;try{const r=await api("/api/chat",{to,text:full});if(r.error){toast(r.error);return}
-   if(this.target===t)this.close();A2ui.stick=true;toast(to=="computer"?"Sent to computer use. "+r.note:r.note||(to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude")));load()}
+ body(to,t,text){  // what each recipient can use of the reply; null = too long (or nothing to send)
+  const quote=t.quote.replace(/\n\s*\n/g,"\n").trim().slice(0,QUOTE_MAX);
+  if(to=="computer")return text?this.task(t,text):null;
+  if(to=="todo")return text?this.task(t,text):quote.split("\n")[0].slice(0,280);
+  if(to=="note")return text?`${text}\n> ${quote.replace(/\n/g,"\n> ")}`:quote;
+  if(to=="vibi"||to=="siri")return text;
+  return text?this.compose(t,text):""},
+ async send(ctx){const text=String(ctx.text||"").trim(),to=(ctx.to||[])[0],t=this.target;if(!t||this.busy||(!text&&to!="todo"&&to!="note"))return;
+  const full=this.body(to,t,text);if(!full||full.length>CHAT_MAX){toast(to=="computer"||to=="todo"?"Keep it short (280 characters, link included)":"Reply too long");return}
+  this.busy=true;try{const r=to=="todo"?await api("/api/todos",{op:"add",text:full}):await api("/api/chat",{to,text:full});if(r.error){toast(r.error);return}
+   if(this.target===t)this.close();A2ui.stick=true;toast(to=="todo"?"Todo added":to=="note"?"Note saved":to=="computer"?"Sent to computer use. "+r.note:to=="siri"?(r.note||"Sent to Siri").split("\n")[0]:to=="vibi"?"Sent to Vibi; the reply will appear here":r.note||(to=="gemini"?"Asked Gemini; the answer will appear in Chat":"Reply sent to "+(to=="grok"?"Grok Bot":"Claude")));load()}
   catch(e){toast("Could not send the reply")}finally{this.busy=false}}};
 /* Read and Rerun on a command entry (what the Commands tab offered). Read shows the command with its result and, unless
    Stealth is on, reads it aloud in this browser; nothing is sent anywhere. Only a click reads or reruns. */
