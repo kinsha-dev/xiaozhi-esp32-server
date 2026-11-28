@@ -5,7 +5,7 @@ import pytest
 
 from mac_app import ctrl_backend as be
 from mac_app import ctrl_search as se
-from mac_app import ctrl_semantic
+from mac_app import ctrl_rank
 from mac_app.ctrl import CtrlPanel
 
 
@@ -32,9 +32,9 @@ def data(tmp_path, monkeypatch):
     monkeypatch.setattr(be, "_todo_store", lambda d: store)
 
     def no_model(*a):
-        raise ctrl_semantic.Unavailable("off in tests")
+        raise ctrl_rank.Unavailable("off in tests")
 
-    monkeypatch.setattr(ctrl_semantic, "scores", no_model)
+    monkeypatch.setattr(ctrl_rank, "rank", no_model)
     monkeypatch.setattr(be, "messages", lambda d, **kw: [
         {"id": "c1", "ts": 5, "time": "t", "category": "Claude", "direction": "to", "body": "Milk prices rose"},
         {"id": "c2", "ts": 6, "time": "t", "category": "Claude", "direction": "to", "body": "unrelated"}])
@@ -45,7 +45,7 @@ def data(tmp_path, monkeypatch):
 
 def test_search_covers_chat_todos_and_notes(data):
     assert [(h["kind"], h["id"]) for h in se.search(data, "MILK")["results"]] == [("todo", "t1"), ("note", "n1"), ("chat", "c1")]
-    assert [h["id"] for h in se.search(data, "milk good")["results"]] == ["n1"]
+    assert se.search(data, "milk good")["results"][0]["id"] == "n1"  # near matches follow
     assert [h["id"] for h in se.search(data, "milk", "chat")["results"]] == ["c1"]
     assert se.search(data, "  ")["results"] == []
 

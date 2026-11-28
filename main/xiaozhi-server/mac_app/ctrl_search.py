@@ -5,10 +5,11 @@ import json
 from pathlib import Path
 
 from mac_app import ctrl_backend as be
-from mac_app import ctrl_semantic
+from mac_app import ctrl_rank
 
 SCOPES = ("all", "chat", "todo", "note")
-LIMIT = 50  # results per scope
+LIMIT = 50  # word matches per scope
+MATCH = 0.05  # the least chance Jev must give an entry to list it as a match
 NOTE_LIMIT = 40000  # an edited note must fit the remote panel's 64 KB request
 
 
@@ -37,31 +38,36 @@ def _entries(data_dir: Path, scope: str) -> list:
 
 
 def search(data_dir: Path, query: str, scope: str = "all") -> dict:
-    """{"results", "note"}: entries holding every word of `query` (any case) newest first, then entries close in meaning,
-    closest first. "note" says why meaning could not be used, or that the index is still being built."""
+    """{"results", "note"}: Jev's pick of the possible entries first (those it gives a real chance, best first), then the
+    other entries holding every word of `query`, newest first, then the near misses. "note" says why Jev was not used."""
     words = str(query or "").casefold().split()
     if scope not in SCOPES:
         raise ValueError("unknown search scope")
     if not words:
         return {"results": [], "note": ""}
-    entries, found, count = _entries(data_dir, scope), [], {}
+    entries, exact, count = _entries(data_dir, scope), [], {}
     for i, (hit, text) in enumerate(entries):
         if all(w in str(text).casefold() for w in words) and count.get(hit["kind"], 0) < LIMIT:
             count[hit["kind"]] = count.get(hit["kind"], 0) + 1
-            found.append(i)
-    results, note = [entries[i][0] for i in found], ""
+            exact.append(i)
+    possible = ctrl_rank.candidates(query, [text for _, text in entries])
+    ranked, note = {}, ""
     try:
-        near, left = ctrl_semantic.scores(data_dir, query.strip(), [text for _, text in entries])
-        seen = {entries[i][1] for i in found}
-        for i in sorted(near, key=near.get, reverse=True):
-            hit, text = entries[i]
-            if text not in seen and len(results) - len(found) < ctrl_semantic.TOP:
-                seen.add(text)
-                results.append({**hit, "meta": f"Similar meaning · {hit['meta']}"})
-        if left:
-            note = f"Still indexing {left} entries for search by meaning; search again shortly."
-    except ctrl_semantic.Unavailable as e:
-        note = f"Matching words only; {e}."
+        chances = ctrl_rank.rank(data_dir, query.strip(), [entries[i][1] for i in possible])
+        ranked = {possible[n]: p for n, p in chances.items() if p >= MATCH}
+        if possible and not ranked:
+            note = "Jev found no clear match; showing word and near matches."
+    except ctrl_rank.Unavailable as e:
+        note = f"Not ranked by Jev: {e}."
+
+    def marked(i, label):
+        hit = entries[i][0]
+        return {**hit, "meta": f"{label} · {hit['meta']}"} if label else hit
+
+    top = sorted(ranked, key=ranked.get, reverse=True)
+    results = [marked(i, f"{'Best match' if n == 0 else 'Match'} {round(ranked[i] * 100)}%") for n, i in enumerate(top)]
+    results += [marked(i, "") for i in exact if i not in ranked]
+    results += [marked(i, "Near match") for i in possible if i not in ranked and i not in exact]
     return {"results": results, "note": note}
 
 

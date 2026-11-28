@@ -305,6 +305,7 @@ function whatsappBar(wa){const bar=document.createElement("div");bar.className="
     host.append(w);text.focus()};
   return bar}
 async function runSearch(){const s=$("#search"),box=$("#sres"),q=s.querySelector("input").value.trim(),seq=++searchSeq;if(!q){box.replaceChildren();return}
+  box.innerHTML='<div class="meta">Searching…</div>';
   const r=await api("/api/search?"+new URLSearchParams({q,scope:s.querySelector("select").value}));if(seq!=searchSeq)return;
   const say=t=>{const d=document.createElement("div");d.className="meta";d.textContent=t;return d};
   if(r.error||!r.results.length){box.innerHTML=`<div class="empty">${esc(r.error||"Nothing found")}</div>`;if(r.note)box.append(say(r.note));return}
