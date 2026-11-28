@@ -31,7 +31,7 @@ button.act:hover{border-color:var(--acc)}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
 .canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
 .replybox{white-space:normal;cursor:auto;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}.bub.sel{width:min(480px,92%);max-width:92%}.replybox>div>div:last-child{flex-wrap:wrap}.replybox button{white-space:nowrap}.replybox textarea{min-width:0!important}.replybox .meta{border-left:3px solid var(--acc);padding-left:8px;white-space:pre-wrap;max-height:64px;overflow:hidden}
-.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}#sbtn{position:absolute;top:4px;right:110px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}#search{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;gap:10px;padding:4px 0 12px}#search[hidden]{display:none}#search form{display:flex;gap:8px}#search input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sres{display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;min-height:0}#sres .bub{max-width:100%;flex:none}#sres textarea{width:100%;box-sizing:border-box;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
+.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.wabox{white-space:normal;color:var(--fg);display:block}.wabox input,.wabox textarea{display:block;width:100%;box-sizing:border-box;margin:6px 0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sbtn{position:absolute;top:4px;right:110px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}#search{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;gap:10px;padding:4px 0 12px}#search[hidden]{display:none}#search form{display:flex;gap:8px}#search input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sres{display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;min-height:0}#sres .bub{max-width:100%;flex:none}#sres textarea{width:100%;box-sizing:border-box;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
 #todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 #todos td:first-child,#todos td.x{width:1%;white-space:nowrap}#todos td.tx{word-break:break-word}#todos td.done{color:var(--mut);text-decoration:line-through}#todos td.done .meta{text-decoration:none;display:inline-block;width:100%}#todos h2{margin:20px 0 4px}
 @media(max-width:600px){td.d{display:none}}
@@ -75,7 +75,7 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"},item:{"@path":"item"}}],
+ {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"},item:{"@path":"item"},wa:{"@path":"wa"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
@@ -85,6 +85,8 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
   function add(r){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=(r.nest&&r.said)||r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
     const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>[...p,r.log].filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
     if(r.channel=="note"||r.channel=="reminder"||r.item){out.push({meta:line(r.category,r.time,r.status),text:body,variant:"other",clamp:String(r.id),...(r.item?{item:r.item}:{})});return}
+    if(r.channel=="whatsapp"){const sent=r.direction=="from",name=sent?(body.match(/^To ([^:\n]*):/)||[])[1]:body.split("\n")[0].split(" — ")[0];
+      out.push({meta:line(r.category,r.time,r.status),text:body,variant:sent?"me":"other",clamp:String(r.id),wa:{contact:name||""}});return}
     if(r.channel=="action"){out.push({variant:"actions",actions:acts});return}
     const command=r.command?{command:{...r.command,id:String(r.id),time:r.time,status:r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:missed||(r.input=="typed"?"typed":"recognized")}}:{};
     if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
@@ -186,6 +188,7 @@ const A2ui={surfaces:{},onEvent:null,expanded:new Set(),
       if(ims.length){const h=document.createElement("div");h.className="rich rimgs";for(const u of ims){const im=document.createElement("img");im.src=u;im.alt="";im.referrerPolicy="no-referrer";im.loading="lazy";h.append(im)}el.append(h)}
       if(lks.length){const h=document.createElement("div");h.className="rich";for(const l of lks){const a=document.createElement("a");a.href=l.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=String(l.title||l.url);a.style.cssText="display:block;color:var(--acc)";h.append(a)}el.append(h)}
       const it=v(c.item);if(it)el.append(itemBar(it));
+      const wa=v(c.wa);if(wa)el.append(whatsappBar(wa));
       const cm=v(c.command);if(cm)el.append(...commandBar(cm,me.expanded));
       const rt=v(c.reply);if(rt){Reply.attach(el,rt);el.append(Reply.button(rt))}});break;
    case"Card":el.className="rcard";if(c.child)el.append(me.node(sf,c.child,scope));break;
@@ -288,6 +291,18 @@ function itemBar(it){const bar=document.createElement("div");bar.className="cmdb
   const todo=async op=>{const r=await api("/api/todos",{op,id:it.id});if(r.error)toast(r.error);load()};
   button("↩ Reply to edit",()=>editor(bar.parentNode,it,()=>load()));
   if(it.kind=="todo"){button(it.done?"Reopen":"Mark done",()=>todo(it.done?"reopen":"done"));button("Delete",()=>confirm("Delete this todo?")&&todo("delete"))}
+  return bar}
+/* Reply on WhatsApp: the user checks the name, types, and confirms who gets it before anything is sent. */
+function whatsappBar(wa){const bar=document.createElement("div");bar.className="cmdbar";const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent="↩ Reply on WhatsApp";bar.append(b);
+  b.onclick=()=>{const host=bar.parentNode;if(host.querySelector(".sedit"))return;const w=document.createElement("div");w.className="sedit wabox";
+    w.innerHTML='<input aria-label="Contact name or number" placeholder="Contact name or number with country code"><textarea rows="2" maxlength="4000" aria-label="WhatsApp message" placeholder="Message…"></textarea><button type="button" class="act pri">Send</button> <button type="button" class="act">Cancel</button>';
+    const[name,text]=w.querySelectorAll("input,textarea"),[send,cancel]=w.querySelectorAll("button");name.value=wa.contact;cancel.onclick=()=>w.remove();w.onkeydown=e=>{if(e.key=="Escape")w.remove()};
+    send.onclick=async()=>{const body={contact:name.value,text:text.value.trim()};if(!body.text)return;send.disabled=true;
+      try{const who=await api("/api/whatsapp",body);if(who.error){toast(who.error);return}
+        if(!confirm(`Send this WhatsApp to ${who.contact} (+${who.phone})?\n\n${body.text}`))return;
+        const r=await api("/api/whatsapp",{...body,phone:who.phone,confirmed:true});if(r.error){toast(r.error);return}
+        w.remove();toast("Sent to "+r.contact);load()}catch(e){toast("Could not send")}finally{send.disabled=false}};
+    host.append(w);text.focus()};
   return bar}
 async function runSearch(){const s=$("#search"),box=$("#sres"),q=s.querySelector("input").value.trim(),seq=++searchSeq;if(!q){box.replaceChildren();return}
   const r=await api("/api/search?"+new URLSearchParams({q,scope:s.querySelector("select").value}));if(seq!=searchSeq)return;

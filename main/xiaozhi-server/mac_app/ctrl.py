@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from mac_app import ctrl_backend as be
 from mac_app import ctrl_items
 from mac_app import ctrl_search
+from mac_app import ctrl_whatsapp
 from mac_app.ctrl_passkey import JS, LOGIN_HTML, Passkeys
 
 UI = Path(__file__).with_name("ctrl_ui") / "index.html"
@@ -68,6 +69,16 @@ class CtrlPanel:
                     return 400, "application/json", json.dumps({"error": str(e)}).encode()
                 if todo:
                     return 200, "application/json", json.dumps(todo).encode()
+            if path == "/api/whatsapp" and method == "POST":
+                try:
+                    contact = str(body.get("contact", ""))
+                    if body.get("confirmed") is True:
+                        out = ctrl_whatsapp.send(self.data_dir, contact, str(body.get("text", "")), str(body.get("phone", "")))
+                    else:  # who would get it, for the user to confirm
+                        out = ctrl_whatsapp.resolve(self.data_dir, contact)
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
+                return 200, "application/json", json.dumps(out).encode()
             if path in ("/api/search", "/api/edit"):
                 try:
                     if path == "/api/search" and method == "GET":
