@@ -46,6 +46,11 @@ class CtrlPanel:
         if query.get("t") != self.token:
             return 403, "application/json", b'{"error":"forbidden"}'
         try:
+            if path == "/api/transcribe" and method == "POST":
+                try:
+                    return 200, "application/json", json.dumps(be.transcribe(str(body.get("audio", "")))).encode()
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
             if path == "/api/chat" and method == "POST":
                 try:
                     todo = be.todo_chat(self.data_dir, str(body.get("to", "")), str(body.get("text", "")), body.get("file"))
@@ -90,7 +95,8 @@ class CtrlPanel:
                 # A typed command to Vibi itself: runs like a spoken one, silently in Stealth (reply shows in Chat).
                 if not self._rerun(text):
                     return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
-                be.note_typed(self.data_dir, "vibi", text)
+                if not body.get("voice"):  # an unmarked command shows as spoken
+                    be.note_typed(self.data_dir, "vibi", text)
                 data = {"id": "", "to": "vibi"}
             elif path == "/api/chat" and method == "POST" and body.get("to") == "computer":
                 text = " ".join(str(body.get("text", "")).split())
@@ -99,7 +105,8 @@ class CtrlPanel:
                 # Replayed as a voice request, so Vibi's usual spoken yes applies to anything that sends, buys, deletes or logs in.
                 if not self._rerun(f"Use the computer to {text}"):
                     return 409, "application/json", b'{"error":"Could not start (busy or muted)"}'
-                be.note_typed(self.data_dir, "computer", text)
+                if not body.get("voice"):
+                    be.note_typed(self.data_dir, "computer", text)
                 data = {"id": "", "to": "computer", "note": "Vibi will ask you out loud before anything risky."}
             elif path == "/api/chat" and method == "POST":
                 try:
@@ -202,7 +209,7 @@ class CtrlPanel:
     SEC_HEADERS = {"Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
                    "Content-Security-Policy": "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}
     MAX_BODY = 65536
-    MAX_CHAT_BODY = 8 * 1024 * 1024  # /api/chat may carry one base64 file of up to 5 MB
+    MAX_CHAT_BODY = 8 * 1024 * 1024  # /api/chat and /api/transcribe may carry one base64 file of up to 5 MB
 
     def named_host(self):
         """Stable hostname of a named Cloudflare tunnel (data/ctrl_tunnel_named.json {"name","hostname"}), if configured."""
@@ -316,7 +323,7 @@ class CtrlPanel:
                 body = None
                 if method == "POST":
                     n = int(self.headers.get("Content-Length") or 0)
-                    if n > (panel.MAX_CHAT_BODY if u.path == "/api/chat" else panel.MAX_BODY):
+                    if n > (panel.MAX_CHAT_BODY if u.path in ("/api/chat", "/api/transcribe") else panel.MAX_BODY):
                         self.send_response(413)
                         self.send_header("Content-Length", "0")
                         self.send_header("Connection", "close")

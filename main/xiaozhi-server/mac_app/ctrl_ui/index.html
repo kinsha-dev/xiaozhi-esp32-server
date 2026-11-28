@@ -60,9 +60,11 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"fInput",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Voice or typed",value:{"@path":"/filter/input"},action:{event:{name:"filter"}},options:[{label:"Voice and typed",value:"all"},{label:"Voice",value:"voice"},{label:"Typed",value:"typed"}]},
  {id:"fDir",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Direction",value:{"@path":"/filter/direction"},action:{event:{name:"filter"}},options:[{label:"Both directions",value:"all"},{label:"To Vibi (received)",value:"to"},{label:"From Vibi (sent)",value:"from"}]},
  {id:"fRange",component:"ChoicePicker",variant:"mutuallyExclusive",label:"Time range",value:{"@path":"/filter/hours"},action:{event:{name:"filter"}},options:[{label:"Last 72 hours",value:"72"},{label:"All time",value:"0"}]},
- {id:"form",component:"Row",align:"end",children:["to","text","pasteBtn","fileBtn","fileName","fileClear","send"]},
+ {id:"form",component:"Row",align:"end",children:["to","text","micBtn","pasteBtn","fileBtn","fileName","fileClear","send"]},
  {id:"to",component:"ChoicePicker",variant:"mutuallyExclusive",label:"To",value:{"@path":"/chat/to"},options:[{label:"Vibi (typed command)",value:"vibi"},{label:"Claude",value:"claude"},{label:"Grok Bot",value:"grok"},{label:"Gemini",value:"gemini"},{label:"Computer use",value:"computer"},{label:"Todo list",value:"todo"}]},
  {id:"text",component:"TextField",label:"Message",placeholder:"Message…",variant:"longText",value:{"@path":"/chat/text"},weight:1},
+ {id:"micBtn",component:"Button",child:"micLbl",action:{event:{name:"mic"}}},
+ {id:"micLbl",component:"Text",text:"🎤 Mic"},
  {id:"pasteBtn",component:"Button",child:"pasteLbl",action:{event:{name:"paste"}}},
  {id:"pasteLbl",component:"Text",text:"📋 Paste"},
  {id:"fileClear",component:"Button",child:"clearLbl",visible:{"@path":"/chat/fileName"},action:{event:{name:"clear_file"}}},
@@ -222,12 +224,35 @@ async function pasteClipboard(){try{if(navigator.clipboard.read){for(const item 
     else insertText(await navigator.clipboard.readText())}catch(e){toast("The browser did not allow reading the clipboard. Press ⌘V instead.")}}
 document.addEventListener("paste",e=>{if(tab!="chat"||e.target.closest?.(".replybox"))return;const f=pastedFile(e.clipboardData);
   if(f){e.preventDefault();attachFile(f)}else if(!e.target.closest?.("input,textarea")){e.preventDefault();insertText(e.clipboardData.getData("text/plain"))}});
+/* Mic: click, speak, click again. The recording becomes 16 kHz WAV, the voice box's speech service writes it down, and the
+   words are sent to the chosen recipient like a typed message. Esc throws the recording away; 60 s is the most. */
+const MIC_MAX_MS=60000;
+const Mic={rec:null,busy:false,timer:0,cancelled:false,
+ label(t){const b=[...document.querySelectorAll("#chatHost button")].find(b=>/🎤|⏹|⏳/.test(b.textContent));if(b)b.firstChild?b.firstChild.textContent=t:b.textContent=t},
+ async toggle(sf){if(this.busy)return;if(this.rec)return this.rec.stop();
+  let stream;this.busy=true;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){toast("The browser did not allow the microphone");return}finally{this.busy=false}
+  const parts=[],rec=this.rec=new MediaRecorder(stream);this.cancelled=false;rec.ondataavailable=e=>parts.push(e.data);
+  rec.onstop=async()=>{clearTimeout(this.timer);stream.getTracks().forEach(t=>t.stop());this.rec=null;if(this.cancelled){this.label("🎤 Mic");toast("Recording discarded");return}
+   this.busy=true;this.label("⏳ Sending");try{await this.send(sf,new Blob(parts,{type:rec.mimeType}))}catch(e){toast("Could not send the recording")}finally{this.busy=false;this.label("🎤 Mic")}};
+  rec.start();this.label("⏹ Stop");this.timer=setTimeout(()=>this.rec===rec&&rec.stop(),MIC_MAX_MS)},
+ cancel(){if(this.rec){this.cancelled=true;this.rec.stop()}},
+ async send(sf,blob){const to=(sf.data.chat.to||[])[0],heard=await api("/api/transcribe",{audio:await wavBase64(blob)});if(heard.error){toast(heard.error);return}
+  const r=await api("/api/chat",{to,text:heard.text,voice:true});if(r.error){toast(r.error+": "+heard.text.slice(0,80));A2ui.set(sf,"/chat/text",heard.text);A2ui.refresh(sf);return}
+  A2ui.stick=true;toast(`Sent: ${heard.text.slice(0,80)}${r.note?" · "+r.note:""}`);load()}};
+async function wavBase64(blob){const ctx=new AudioContext();let audio;try{audio=await ctx.decodeAudioData(await blob.arrayBuffer())}finally{ctx.close()}
+ const off=new OfflineAudioContext(1,Math.max(1,Math.ceil(audio.duration*16000)),16000),src=off.createBufferSource();src.buffer=audio;src.connect(off.destination);src.start();
+ return readFile(new Blob([wavBytes((await off.startRendering()).getChannelData(0),16000)],{type:"audio/wav"}))}
+function wavBytes(samples,rate){const v=new DataView(new ArrayBuffer(44+samples.length*2)),str=(at,s)=>[...s].forEach((c,i)=>v.setUint8(at+i,c.charCodeAt(0)));
+ str(0,"RIFF");v.setUint32(4,36+samples.length*2,true);str(8,"WAVEfmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,"data");v.setUint32(40,samples.length*2,true);
+ samples.forEach((s,i)=>v.setInt16(44+i*2,Math.max(-1,Math.min(1,s))*32767,true));return v.buffer}
+document.addEventListener("keydown",e=>{if(e.key=="Escape")Mic.cancel()});
 A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="send_reply")return Reply.send(ctx);
   if(name=="cancel_reply")return Reply.close();
   if(name=="filter"){try{localStorage.setItem("vctrlFilter",JSON.stringify(sf.data.filter))}catch(e){}Reply.close();filterButton();A2ui.stick=true;return loadChat()}
   if(name=="pick_file"){chatFile.click();return}
   if(name=="paste")return pasteClipboard();
+  if(name=="mic")return Mic.toggle(sf);
   if(name=="clear_file"){chatFile.value="";return chatFile.onchange()}
   if(name=="open_url"){const u=httpUrl(ctx.url);if(u)window.open(u,"_blank","noopener,noreferrer");return}
   if(name=="reply"){const text=String(ctx.text||"").trim();if(!text)return;const r=await api("/api/chat",{to:sf.to||"grok",text});toast(r.error||r.note||"Sent: "+text.slice(0,60));if(!r.error){A2ui.stick=true;load()}return}

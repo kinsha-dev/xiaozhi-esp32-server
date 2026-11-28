@@ -310,6 +310,38 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
     return {"id": mid, "to": to}
 
 
+# --- microphone (Chat tab) ------------------------------------------------------------------------
+STT_URL = "http://127.0.0.1:9300/v1/audio/transcriptions"  # the voice box's speech service, as the voice server uses it
+
+
+def transcribe(audio_b64: str, url: str = None) -> dict:
+    """{"text"} for a WAV recorded in the Chat tab ({"audio": base64}). Nothing is kept or sent anywhere else. The owner
+    gate is skipped: the panel's token already says who this is, as for a typed message. ValueError says what went wrong."""
+    import urllib.request
+
+    try:
+        raw = base64.b64decode(audio_b64 or "", validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("bad recording")
+    if not raw.startswith(b"RIFF"):
+        raise ValueError("bad recording")
+    if len(raw) > FILE_LIMIT:
+        raise ValueError("recording too long")
+    edge = uuid.uuid4().hex
+    body = (f'--{edge}\r\nContent-Disposition: form-data; name="file"; filename="mic.wav"\r\n'
+            "Content-Type: audio/wav\r\n\r\n").encode() + raw + f"\r\n--{edge}--\r\n".encode()
+    request = urllib.request.Request(url or os.environ.get("VIBI_STT_URL") or STT_URL, data=body, method="POST",
+                                     headers={"Content-Type": f"multipart/form-data; boundary={edge}", "X-Bypass-Gate": "1"})
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            text = " ".join(str(json.loads(response.read()).get("text", "")).split())
+    except (OSError, ValueError, AttributeError):
+        raise ValueError("the speech service did not answer")
+    if not text:
+        raise ValueError("no words heard")
+    return {"text": text}
+
+
 # --- todos (shared with the voice tools through data/todos.jsonl) ----------------------------------
 def note_typed(data_dir: Path, to: str, text: str):
     """Mark in the history log that this command came from the panel; the server logs it like a spoken one."""
