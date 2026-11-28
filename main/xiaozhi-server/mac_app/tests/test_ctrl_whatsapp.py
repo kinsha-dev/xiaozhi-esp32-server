@@ -55,3 +55,22 @@ def test_the_panel_only_looks_up_until_confirmed(data, monkeypatch):
     code, _, out = panel.handle("POST", "/api/whatsapp", {"t": panel.token}, body)
     assert code == 200 and json.loads(out)["phone"] == "15550100000"
     assert panel.handle("POST", "/api/whatsapp", {}, body)[0] == 403
+
+
+def test_the_sender_is_read_from_the_notification(data):
+    (data / "whatsapp_contacts.json").write_text(json.dumps({"sample": "+15550100001", "sample new": "+15550100000",
+                                                             "dr. who": "+15550100002"}))
+    texts = ["\u200eSample New. Like 8-10 kids would be saying. More", "Sample: see you", "Dr. Who. hello",
+             "Sample New \u2014 sub\nbody", "New notification from whatsapp: Sample New. hi", "Stranger Person. hi there", ""]
+    assert wa.senders(data, texts) == ["Sample New", "Sample", "Dr. Who", "Sample New", "Sample New", "Stranger Person", ""]
+
+
+def test_received_rows_carry_the_sender(data, monkeypatch):
+    from mac_app import ctrl_backend as be
+
+    (data / "server").mkdir()
+    (data / "server" / "message_board.py").write_text(
+        "def messages(d, source=None):\n    return [{'id': 'w', 'ts': 9e9, 'source': 'Notifications \u00b7 Phone', 'channel': 'whatsapp', "
+        "'direction': 'to', 'body': 'Sample Person. a long message', 'status': ''}]\n")
+    monkeypatch.setenv("VIBI_MESSAGE_BOARD", str(data / "server" / "message_board.py"))
+    assert [r["contact"] for r in be.messages(data) if r["channel"] == "whatsapp"] == ["Sample Person"]

@@ -85,7 +85,7 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
   function add(r){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=(r.nest&&r.said)||r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
     const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>[...p,r.log].filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
     if(r.channel=="note"||r.channel=="reminder"||r.item){out.push({meta:line(r.category,r.time,r.status),text:body,variant:"other",clamp:String(r.id),...(r.item?{item:r.item}:{})});return}
-    if(r.channel=="whatsapp"){const sent=r.direction=="from",name=sent?(body.match(/^To ([^:\n]*):/)||[])[1]:body.split("\n")[0].split(" — ")[0];
+    if(r.channel=="whatsapp"){const sent=r.direction=="from",name=sent?(body.match(/^To ([^:\n]*):/)||[])[1]:r.contact;
       out.push({meta:line(r.category,r.time,r.status),text:body,variant:sent?"me":"other",clamp:String(r.id),wa:{contact:name||""}});return}
     if(r.channel=="action"){out.push({variant:"actions",actions:acts});return}
     const command=r.command?{command:{...r.command,id:String(r.id),time:r.time,status:r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:missed||(r.input=="typed"?"typed":"recognized")}}:{};

@@ -24,6 +24,29 @@ def _name(text) -> str:
     return " ".join(MARKS.sub("", str(text or "")).split())
 
 
+def _saved(data_dir: Path) -> dict:
+    """{casefolded name: (name, number)} from data/whatsapp_contacts.json."""
+    try:
+        saved = json.loads((Path(data_dir) / "whatsapp_contacts.json").read_text(encoding="utf-8"))
+        return {_name(k).casefold(): (_name(k), str(v)) for k, v in saved.items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def senders(data_dir: Path, texts: list) -> list:
+    """Who each received message is from. A phone notification is one line "Name. message" (or "Name: group sender.
+    message"), so this takes the longest saved contact name the line starts with, else what precedes the first ". " or
+    ": " for the user to correct."""
+    saved, out = _saved(data_dir), []
+    for text in texts:
+        line = _name(str(text or "").split("\n")[0].split(" — ")[0])
+        line = re.sub(r"(?i)^new notification from whatsapp: ", "", line)
+        ends = [len(line)] + [m.start() for m in re.finditer(r"[.:,](?= |$)| - ", line)]
+        known = [line[:e].strip() for e in sorted(ends, reverse=True) if line[:e].strip().casefold() in saved]
+        out.append(known[0] if known else re.split(r"[.:](?= |$)", line)[0].strip()[:60])
+    return out
+
+
 def resolve(data_dir: Path, contact: str) -> dict:
     """{"contact", "phone"} for a saved contact's exact name (any case) or a phone number. ValueError otherwise."""
     name = _name(contact)
@@ -31,11 +54,7 @@ def resolve(data_dir: Path, contact: str) -> dict:
         raise ValueError("who should get it?")
     if re.fullmatch(r"\+?[\d ()-]+", name) and len(re.sub(r"\D", "", name)) >= MIN_DIGITS:
         return {"contact": name, "phone": re.sub(r"\D", "", name)}
-    try:
-        saved = json.loads((Path(data_dir) / "whatsapp_contacts.json").read_text(encoding="utf-8"))
-        found = {_name(k).casefold(): str(v) for k, v in saved.items()}.get(name.casefold())
-    except (OSError, ValueError, AttributeError):
-        found = None
+    found = _saved(data_dir).get(name.casefold(), ("", None))[1]
     if not found or len(re.sub(r"\D", "", found)) < MIN_DIGITS:
         raise ValueError(f"no WhatsApp number saved for {name[:60]}: type the number with country code")
     return {"contact": name, "phone": re.sub(r"\D", "", found)}
