@@ -31,7 +31,7 @@ button.act:hover{border-color:var(--acc)}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
 .canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
 .replybox{white-space:normal;cursor:auto;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}.bub.sel{width:min(480px,92%);max-width:92%}.replybox>div>div:last-child{flex-wrap:wrap}.replybox button{white-space:nowrap}.replybox textarea{min-width:0!important}.replybox .meta{border-left:3px solid var(--acc);padding-left:8px;white-space:pre-wrap;max-height:64px;overflow:hidden}
-.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
+.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}#sbtn{position:absolute;top:4px;right:110px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}#search{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;gap:10px;padding:4px 0 12px}#search[hidden]{display:none}#search form{display:flex;gap:8px}#search input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sres{display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;min-height:0}#sres .bub{max-width:100%;flex:none}#sres textarea{width:100%;box-sizing:border-box;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
 #todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 #todos td:first-child,#todos td.x{width:1%;white-space:nowrap}#todos td.tx{word-break:break-word}#todos td.done{color:var(--mut);text-decoration:line-through}#todos td.done .meta{text-decoration:none;display:inline-block;width:100%}#todos h2{margin:20px 0 4px}
 @media(max-width:600px){td.d{display:none}}
@@ -267,8 +267,30 @@ const defaultFilter=()=>({type:["all"],action:["recognized"],input:["all"],direc
 function filterButton(){const b=$("#fbtn"),f=A2ui.surfaces.chat.data.filter,d=defaultFilter(),n=Object.keys(d).filter(k=>f[k][0]!=d[k][0]).length;if(!b)return;b.textContent="Filter"+(n?` (${n})`:"")}
 function filterOpen(on){$("#chatHost")?.classList.toggle("fopen",on);$("#fbtn")?.setAttribute("aria-expanded",on)}
 function savedFilter(){const f=defaultFilter();try{const s=JSON.parse(localStorage.getItem("vctrlFilter"));for(const k in f)if(typeof s?.[k]?.[0]=="string")f[k]=[s[k][0]]}catch(e){}return f}
+/* Search: past chat entries, todos and notes. A note or todo result is answered with its new text, which replaces it. */
+let searchSeq=0;
+function searchShell(){const s=document.createElement("section");s.id="search";s.hidden=true;
+  s.innerHTML='<form><input type="search" maxlength="200" placeholder="Search chat, todos and notes…" aria-label="Search"><select class="act" aria-label="Search in"><option value="all">Everything</option><option value="chat">Chat</option><option value="todo">Todos</option><option value="note">Notes</option></select><button class="act pri">Search</button><button type="button" class="act">Close</button></form><div id="sres"></div>';
+  const f=s.querySelector("form");f.onsubmit=e=>{e.preventDefault();runSearch()};f.querySelector("select").onchange=()=>runSearch();f.lastElementChild.onclick=()=>searchOpen(false);
+  s.onkeydown=e=>{if(e.key=="Escape"){const open=e.target.closest(".sedit");open?open.remove():searchOpen(false)}};return s}
+function searchOpen(on){const s=$("#search");if(!s)return;s.hidden=!on;if(on){Reply.close();filterOpen(false);s.querySelector("input").focus()}}
+async function runSearch(){const s=$("#search"),box=$("#sres"),q=s.querySelector("input").value.trim(),seq=++searchSeq;if(!q){box.replaceChildren();return}
+  const r=await api("/api/search?"+new URLSearchParams({q,scope:s.querySelector("select").value}));if(seq!=searchSeq)return;
+  if(r.error||!r.results.length){box.innerHTML=`<div class="empty">${esc(r.error||"Nothing found")}</div>`;return}
+  box.replaceChildren(...r.results.map(searchResult))}
+function searchResult(h){const el=document.createElement("div");el.className="bub";el.innerHTML=`<div class="meta">${esc(h.meta)}</div><div class="body">${esc(h.text)}</div>`;
+  const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent=text;b.onclick=run;el.append(b);return b},body=el.querySelector(".body");
+  if(h.text.length>400){body.classList.add("clamp");const more=button("Expand",()=>{more.textContent=body.classList.toggle("clamp")?"Expand":"Collapse"});more.style.marginRight="12px"}
+  if(h.kind!="chat")button("↩ Reply to edit",()=>{if(el.querySelector(".sedit"))return;const w=document.createElement("div");w.className="sedit";
+    w.innerHTML=`<textarea rows="${h.kind=="note"?6:2}" aria-label="New text"></textarea><button type="button" class="act pri">Save</button> <button type="button" class="act">Cancel</button>`;
+    const t=w.querySelector("textarea"),[save,cancel]=w.querySelectorAll("button");t.value=h.text;cancel.onclick=()=>w.remove();
+    save.onclick=async()=>{save.disabled=true;try{const r=await api("/api/edit",{kind:h.kind,id:h.id,text:t.value,old:h.text});if(r.error){toast(r.error);return}
+        toast(h.kind=="note"?"Note saved":"Todo saved");el.replaceWith(searchResult({...h,text:r.item.text}))}catch(e){toast("Could not save")}finally{save.disabled=false}};
+    el.append(w);t.focus()});
+  return el}
 async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter={...savedFilter(),...linkFilter};linkFilter=null;A2ui.mount("chat",$("#chatHost"));
-    const b=document.createElement("button");b.id="fbtn";b.type="button";b.className="act";b.onclick=()=>filterOpen(!$("#chatHost").classList.contains("fopen"));$("#chatHost").append(b);filterOpen(false);filterButton()}
+    const b=document.createElement("button");b.id="fbtn";b.type="button";b.className="act";b.onclick=()=>filterOpen(!$("#chatHost").classList.contains("fopen"));$("#chatHost").append(b);filterOpen(false);filterButton();
+    const find=document.createElement("button");find.id="sbtn";find.type="button";find.className="act";find.textContent="🔍 Search";find.onclick=()=>searchOpen(true);$("#chatHost").append(find,searchShell())}
   const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],action:f.action[0],input:f.input[0],direction:f.direction[0],hours:f.hours[0]});
   const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat")A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}
 /* ---- Todo tab: data/todos.jsonl, also written by the voice tools and the Chat tab; polled every 2 s so those show up live.
