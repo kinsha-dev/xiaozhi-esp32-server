@@ -121,6 +121,12 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
         if r.get("source") == "Grok Bot" and r.get("direction") == "from" and r.get("pair_id") in logs:
             r["log"] = logs[r["pair_id"]]
     _mark_risky(data_dir, rows)
+    got = [r for r in rows if r.get("channel") == "whatsapp" and r.get("direction") == "to"]
+    if got:
+        from mac_app import ctrl_whatsapp
+        names = ctrl_whatsapp.senders(Path(data_dir), [r.get("body") for r in got])
+        found = {id(r): name for r, name in zip(got, names)}
+        rows = [{**r, "contact": found[id(r)]} if id(r) in found else r for r in rows]
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
 
