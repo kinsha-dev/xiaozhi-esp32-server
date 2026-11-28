@@ -129,7 +129,8 @@ class CtrlPanel:
                 data = {"ok": True, "on": on}
             elif path == "/api/chat" and method == "POST" and str(body.get("to") or "") == "siri":
                 try:
-                    data = be.siri_chat(self.data_dir, str(body.get("text", "")), body.get("file"))
+                    data = be.siri_chat(self.data_dir, str(body.get("text", "")), body.get("file"),
+                                        confirmed=body.get("confirmed") is True)
                 except ValueError as e:
                     return 400, "application/json", json.dumps({"error": str(e)}).encode()
             elif path == "/api/chat" and method == "POST" and body.get("to") == "vibi":

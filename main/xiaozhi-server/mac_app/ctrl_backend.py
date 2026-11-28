@@ -321,7 +321,7 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
     return {"id": mid, "to": to}
 
 
-def siri_chat(data_dir: Path, text: str, file=None) -> dict:
+def siri_chat(data_dir: Path, text: str, file=None, confirmed: bool = False) -> dict:
     """A Chat tab message for Siri. ``server/siri_chat.py`` in the voice-box repo runs the Shortcut and files the reply.
 
     A missing Shortcut or a computer that is not a Mac comes back inside ``note`` (the module does not raise for those).
@@ -334,9 +334,9 @@ def siri_chat(data_dir: Path, text: str, file=None) -> dict:
     mod = _load_module("vibi_siri_chat", data_dir, "VIBI_SIRI_CHAT", "siri_chat.py")
     if mod is None or not hasattr(mod, "chat_turn"):
         raise ValueError("Send to Siri is not available: update the voice note box repo")
-    result = mod.chat_turn(Path(data_dir), said)
+    result = mod.chat_turn(Path(data_dir), said, confirmed=confirmed)
     return {"id": str(result.get("id") or ""), "to": "siri", "note": result.get("reply") or result.get("spoken") or "",
-            "ok": bool(result.get("ok"))}
+            "ok": bool(result.get("ok")), "confirm": bool(result.get("needs_confirmation"))}
 
 
 # --- microphone (Chat tab) ------------------------------------------------------------------------

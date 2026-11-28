@@ -44,7 +44,9 @@ const OLD_TABS={board:"chat",actions:"chat",commands:"chat",notes:"chat",todo:"c
 let linkFilter={"#commands":{type:["commands"],action:["all"],hours:["0"]},"#notes":{type:["note"],hours:["0"]},"#todo":{type:["todo"],hours:["0"]}}[location.hash]||null;  // the old Commands, Notes and Todo lists
 let tab=tabKey(location.hash.slice(1))||tabKey(localStorage.getItem("vctrlTab"))||"chat",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
+async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{}),j=await r.json();
+  // a risky message (to Siri) is only sent after a yes; asked here so every way of sending goes through it
+  if(p=="/api/chat"&&j.confirm&&!body.confirmed)return confirm(j.note)?api(p,{...body,confirmed:true}):{error:"Not sent"};return j}
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
 function nav(){$("#nav").innerHTML=(TABS.length<2?[]:TABS).map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
 function go(k){window.speechSynthesis?.cancel();tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}

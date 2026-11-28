@@ -12,7 +12,9 @@ def _box(tmp_path):
     root = tmp_path / "vb"
     (root / "server").mkdir(parents=True)
     (root / "server" / "siri_chat.py").write_text(
-        "def chat_turn(data_dir, text, **kw):\n"
+        "def chat_turn(data_dir, text, confirmed=False):\n"
+        "    if 'pay' in text and not confirmed:\n"
+        "        return {'needs_confirmation': True, 'reply': 'Send: ' + text + '?'}\n"
         "    return {'ok': True, 'reply': 'Sent to Siri: ' + text + '\\nShortcut \"Send to Siri\" finished (exit 0).',"
         " 'spoken': 'Sent that to Siri.'}\n"
     )
@@ -44,3 +46,15 @@ def test_chat_tab_has_siri_mode_and_the_button():
     assert '{label:"Siri",value:"siri"}' in html
     assert "Send to Siri" in html
     assert 'name:"send_siri"' in html
+
+
+def test_risky_siri_text_waits_for_the_confirm(tmp_path):
+    data = _box(tmp_path)
+    panel = CtrlPanel(data, data, lambda text: True)
+    send = lambda **extra: json.loads(panel.handle("POST", "/api/chat", {"t": panel.token}, {"to": "siri", "text": "pay Sam", **extra})[2])
+    assert send()["confirm"] and send(confirmed="yes")["confirm"]
+    assert not send(confirmed=True)["confirm"]
+
+
+def test_every_way_of_sending_asks_before_a_risky_message():
+    assert 'if(p=="/api/chat"&&j.confirm&&!body.confirmed)return confirm(j.note)' in UI.read_text()
