@@ -27,6 +27,12 @@ KEY_I, MOD_CTRL = 34, 0x1000  # kVK_ANSI_I, controlKey
 ALT_MODS = 0x1000 | 0x800  # Ctrl+Option, a fallback when Ctrl+I is taken or unreliable
 
 
+def page() -> bytes:
+    """The panel's HTML with every ctrl_ui/plugins/*.js inlined, so a feature is added or removed as one file."""
+    scripts = b"".join(b"<script>\n" + f.read_bytes() + b"</script>\n" for f in sorted((UI.parent / "plugins").glob("*.js")))
+    return UI.read_bytes().replace(b"<!--PLUGINS-->", scripts)
+
+
 class CtrlPanel:
     def __init__(self, data_dir, server_dir, rerun, quit_app=lambda: None, set_muted=None, set_stealth=None):
         """rerun(text) -> bool: replays `text` as a fresh voice turn (so the usual spoken confirmation applies)."""
@@ -45,7 +51,7 @@ class CtrlPanel:
         if path == "/":
             if query.get("t") != self.token:
                 return 403, "text/plain", b"forbidden"
-            return 200, "text/html", UI.read_bytes().replace(b"__TOKEN__", self.token.encode())
+            return 200, "text/html", page().replace(b"__TOKEN__", self.token.encode())
         if query.get("t") != self.token:
             return 403, "application/json", b'{"error":"forbidden"}'
         try:
