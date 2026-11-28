@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from mac_app import ctrl_threads
 from mac_app import ctrl_voice
 
 LABELS = {"server": "com.voicebox.server", "whisper": "com.voicebox.whisper", "macapp": "com.voicebox.macapp"}
@@ -94,7 +95,8 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
     if hours and hours > 0:
         cutoff = time.time() - hours * 3600
         rows = [r for r in rows if (r.get("ts") or 0) >= cutoff]
-    rows = [{**r, "type": message_type(r)} for r in rows]
+    rows = ctrl_threads.link([{**r, "type": message_type(r)} for r in rows])
+    everything = rows
     if type in ("actions", "commands"):
         rows = [r for r in rows if r.get(type if type == "actions" else "command")]
     elif type == "conversation":
@@ -109,7 +111,11 @@ def messages(data_dir: Path, limit: int = 300, hours: float = 48, type: str = "a
         rows = [r for r in rows if r["input"] == input]
     if direction != "all":
         rows = [r for r in rows if _has_direction(r, direction)]
-    rows = rows[:limit]
+    rows = ctrl_threads.arrange(rows[:limit], everything)
+    logs = ctrl_threads.webhook_logs(data_dir)
+    for r in rows:
+        if r.get("source") == "Grok Bot" and r.get("direction") == "from" and r.get("pair_id") in logs:
+            r["log"] = logs[r["pair_id"]]
     _mark_risky(data_dir, rows)
     return [{**r, "category": r["source"] if r["source"].lower() == r["channel"].lower() else f"{r['source']} · {r['channel']}"} for r in rows]
 
@@ -193,24 +199,42 @@ def _grok_webhook():
     return url, auth
 
 
-def _nudge_grok(mid: str) -> None:
+def _log_nudge(data_dir: Path, mid: str, result: str) -> None:
+    """One line per webhook call in data/grok/webhook.jsonl (shown in Chat). Never the URL, token or reply body."""
+    row = {"id": mid, "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "via": "Vibi Ctrl", "result": result}
+    try:
+        path = Path(data_dir) / ctrl_threads.WEBHOOK_LOG
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
+    print(f"[grok] webhook {mid}: {result}", flush=True)
+
+
+def _nudge_grok(data_dir: Path, mid: str) -> None:
     """Wake the Grok Bot for request `mid` (it is nudged by webhook, not by polling): POST {"id","kind","url"} like the voice path."""
     url, auth = _grok_webhook()
     if not url:
+        _log_nudge(data_dir, mid, "not sent, no webhook is set up")
         return
     headers = {"Content-Type": "application/json"}
     if auth:
         headers["Authorization"] = auth if auth.lower().startswith("bearer ") else f"Bearer {auth}"
 
     def post():
-        import ssl, urllib.request
+        import ssl, urllib.error, urllib.request
         try:  # the python.org build has no root certificates of its own: use macOS's bundle
             ctx = ssl.create_default_context(cafile="/etc/ssl/cert.pem") if os.path.exists("/etc/ssl/cert.pem") else None
-            urllib.request.urlopen(urllib.request.Request(
-                url, data=json.dumps({"id": mid, "kind": "task", "url": ""}).encode(), headers=headers, method="POST"),
-                timeout=10, context=ctx).close()
-        except Exception:
-            pass  # the request file is still there for the bot to poll
+            with urllib.request.urlopen(urllib.request.Request(
+                    url, data=json.dumps({"id": mid, "kind": "task", "url": ""}).encode(), headers=headers, method="POST"),
+                    timeout=10, context=ctx) as r:
+                result = f"HTTP {r.status}"
+        except urllib.error.HTTPError as e:
+            result = f"failed, HTTP {e.code}"
+        except Exception as e:  # the request file is still there for the bot to poll
+            result = f"failed, {type(e).__name__}"
+        _log_nudge(data_dir, mid, result)
 
     threading.Thread(target=post, daemon=True, name="grok-nudge").start()
 
@@ -282,7 +306,7 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
                                    "created": datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S"),
                                    "reason": "Vibi Ctrl chat", **({"file": str(path)} if path else {})}))
         tmp.replace(req / f"{mid}.json")
-        _nudge_grok(mid)
+        _nudge_grok(d, mid)
     return {"id": mid, "to": to}
 
 
