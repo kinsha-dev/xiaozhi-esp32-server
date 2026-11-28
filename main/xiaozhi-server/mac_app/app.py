@@ -115,7 +115,7 @@ def main():
     collector.start()
     board = BoardService()
     board.start()
-    from mac_app.ctrl import CtrlPanel, register_hotkeys
+    from mac_app.ctrl import CtrlPanel, open_on_start, register_hotkeys
     from mac_app.ctrl_tunnel import Tunnel
 
     panel = CtrlPanel(ctl.cfg.data_dir, SERVER_DIR, lambda text: ctl.start_session(text, force=True),
@@ -271,4 +271,5 @@ def main():
         pass
     app = MenuApp()
     install_dock_menu(ctl, app)
+    open_on_start(panel)
     app.run()

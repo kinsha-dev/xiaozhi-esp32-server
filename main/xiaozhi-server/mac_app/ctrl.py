@@ -416,6 +416,17 @@ class CtrlPanel:
             self.httpd.shutdown()
 
 
+def open_on_start(panel, env=os.environ, delay=1.0):
+    """Open a fresh panel tab shortly after the app starts: a restart ends the old tab's link. VIBI_CTRL_ON_START=0 turns
+    it off. Returns the timer, or None when it is off."""
+    if env.get("VIBI_CTRL_ON_START", "1") == "0":
+        return None
+    timer = threading.Timer(delay, panel.open)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def register_hotkeys(callback, combos=(("Ctrl+I", MOD_CTRL), ("Ctrl+Option+I", ALT_MODS))):
     """Global hotkeys through Carbon RegisterEventHotKey (no Accessibility permission needed), one shared handler.
     Returns {name: armed}. Call on the main thread before the AppKit run loop starts."""
