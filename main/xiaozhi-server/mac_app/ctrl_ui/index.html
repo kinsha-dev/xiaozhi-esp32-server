@@ -31,7 +31,7 @@ button.act:hover{border-color:var(--acc)}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
 .canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
 .replybox{white-space:normal;cursor:auto;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}.bub.sel{width:min(480px,92%);max-width:92%}.replybox>div>div:last-child{flex-wrap:wrap}.replybox button{white-space:nowrap}.replybox textarea{min-width:0!important}.replybox .meta{border-left:3px solid var(--acc);padding-left:8px;white-space:pre-wrap;max-height:64px;overflow:hidden}
-.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub .meta{margin-bottom:2px}
+.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
 #todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 #todos td:first-child,#todos td.x{width:1%;white-space:nowrap}#todos td.tx{word-break:break-word}#todos td.done{color:var(--mut);text-decoration:line-through}#todos td.done .meta{text-decoration:none;display:inline-block;width:100%}#todos h2{margin:20px 0 4px}
 @media(max-width:600px){td.d{display:none}}
@@ -73,17 +73,19 @@ const CHAT_SURFACE={version:"1.0",createSurface:{surfaceId:"chat",catalogId:"vib
  {id:"send",component:"Button",variant:"primary",child:"sendLbl",action:{event:{name:"send_chat",context:{to:{"@path":"/chat/to"},text:{"@path":"/chat/text"}}}}},
  {id:"sendLbl",component:"Text",text:"Send"},
  {id:"feed",component:"List",children:{path:"/messages",componentId:"bubble"}},
- {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"}}],
+ {id:"bubble",component:"ChatBubble",reply:{"@path":"reply"},meta:{"@path":"meta"},text:{"@path":"text"},variant:{"@path":"variant"},rich:{"@path":"rich"},images:{"@path":"images"},links:{"@path":"links"},to:{"@path":"to"},clamp:{"@path":"clamp"},actions:{"@path":"actions"},command:{"@path":"command"},nest:{"@path":"nest"}}],
  dataModel:{chat:{to:["claude"],text:"",fileName:""},filter:{type:["all"],action:["recognized"],input:["all"],direction:["all"],hours:["72"]},messages:[]}}};
 const CHAT_NAMES={"Claude":"Claude","Grok Bot":"Grok","Gemini":"Gemini","Todo":"Todo","Vibi":"Vibi"},CHAT_TO={"Claude":"claude","Grok Bot":"grok","Gemini":"gemini"};
 const CLAMPED=["jobs","notifications","whatsapp","mail","other"];  // long feed items start collapsed; conversations never do
 function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (newest first) -> bubbles, as an updateDataModel message
-  for(const r of m.slice().reverse()){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
-    const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>p.filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
-    if(r.channel=="action"){out.push({variant:"actions",actions:acts});continue}
+  for(const r of m.slice().reverse()){const first=out.length;add(r);
+    if(r.nest)out.slice(first).forEach(b=>b.nest=true);else if(r.thread&&out[first])out[first].meta="Original conversation · "+out[first].meta}
+  function add(r){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=(r.nest&&r.said)||r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
+    const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>[...p,r.log].filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
+    if(r.channel=="action"){out.push({variant:"actions",actions:acts});return}
     const command=r.command?{command:{...r.command,id:String(r.id),time:r.time,status:r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:missed||(r.input=="typed"?"typed":"recognized")}}:{};
     if(r.source=="Gemini"||r.source=="Todo"||r.channel=="typed"){const q=body.match(/^(?:Q|You): ([\s\S]*?)\n\n(?:(?:A|Vibi): )?([\s\S]*)$/);
-      if(q){if(direction!="to"){out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me",...command});if(acts)out.push({variant:"thread",actions:acts})}if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});continue}}
+      if(q){if(direction!="to"){out.push({meta:line(`You → ${who}`,r.time,r.input),text:q[1],variant:"me",...command});if(acts)out.push({variant:"thread",actions:acts})}if(direction!="from")out.push({meta:line(who,r.time,r.input),text:q[2],variant:bad,reply:replyTarget({...r,direction:"to"},q[2])});return}}
     const extra={...(CLAMPED.includes(r.type)?{clamp:String(r.id)}:{}),...(r.ui?{rich:r.ui}:{}),...(r.images?{images:r.images}:{}),...(r.links?{links:r.links}:{})};
     const status=r.source=="Claude"&&r.channel=="inbox"?{new:"waiting for Claude",read:"read by Claude"}[r.status]||r.status:r.status;
     out.push(r.direction=="from"?{meta:line(`You → ${who}`,r.time,status,r.input,missed),text:body,variant:"me",...command,...extra}:{meta:line(r.category,r.time,r.status,how,missed),text:body,variant:bad,to:CHAT_TO[r.source],reply:replyTarget(r,body),...extra});
@@ -173,7 +175,7 @@ const A2ui={surfaces:{},onEvent:null,expanded:new Set(),
       const atEnd=isFeed&&el.scrollHeight-el.scrollTop-el.clientHeight<80,first=!el.dataset.n;el.dataset.n=1;
       sf.watch=sf.watch.filter(f=>!own.includes(f));const n=sf.watch.length,fill=()=>el.replaceChildren(...items.map((_,i)=>me.node(sf,t.componentId,t.path+"/"+i)));fill();own=sf.watch.slice(n);if(isFeed&&(first||atEnd||me.stick)){el.scrollTop=el.scrollHeight;me.stick=false}};bind(draw);break}
    case"Text":bind(()=>{el.textContent=v(c.text)??"";el.className=c.variant=="caption"?"meta":""});break;
-   case"ChatBubble":bind(()=>{const k=v(c.variant);if(k=="thread"||k=="actions"){el.className="thread"+(k=="thread"?" child":"");el.replaceChildren(...(v(c.actions)||[]).map(a=>actionItem(a,me.expanded)));return}el.className="bub "+({me:"me",error:"bad",note:"note",other:"other"}[k]||"");
+   case"ChatBubble":bind(()=>{const k=v(c.variant);const nest=v(c.nest)?" nest":"";if(k=="thread"||k=="actions"){el.className="thread"+(k=="thread"?" child":"")+nest;el.replaceChildren(...(v(c.actions)||[]).map(a=>actionItem(a,me.expanded)));return}el.className="bub "+({me:"me",error:"bad",note:"note",other:"other"}[k]||"")+nest;
       el.innerHTML=(v(c.meta)?`<div class="meta">${esc(v(c.meta))}</div>`:"")+`<div class="body">${esc(v(c.text))}</div>`;
       const long=v(c.clamp),words=String(v(c.text)??"");if(long&&(words.length>400||words.split("\n").length>6)){const d=el.querySelector(".body"),b=document.createElement("button"),show=()=>{const open=me.expanded.has(long);d.classList.toggle("clamp",!open);b.textContent=open?"Collapse":"Expand"};b.type="button";b.className="rbtn";b.onclick=()=>{me.expanded.has(long)?me.expanded.delete(long):me.expanded.add(long);show()};show();el.append(b)}
       const rich=cleanRich(v(c.rich),v(c.to));if(rich){const h=document.createElement("div");h.className="rich";h.append(me.node(rich,"root",""));el.append(h)}
