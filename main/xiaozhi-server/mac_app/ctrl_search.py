@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from mac_app import ctrl_backend as be
-from mac_app import ctrl_rank
+from mac_app import ctrl_items, ctrl_rank
 
 SCOPES = ("all", "chat", "todo", "note")
 LIMIT = 50  # word matches per scope
@@ -33,7 +33,7 @@ def _entries(data_dir: Path, scope: str) -> list:
         for r in rows:
             text = r.get("body") or r.get("summary") or ""
             meta = (r.get("category"), "from you" if r.get("direction") == "from" else "", r.get("time"))
-            out.append((_hit("chat", r["id"], text, " · ".join(x for x in meta if x)), text))
+            out.append(({**_hit("chat", r["id"], text, " · ".join(x for x in meta if x)), "row": r}, text))
     return out
 
 
@@ -60,9 +60,13 @@ def search(data_dir: Path, query: str, scope: str = "all") -> dict:
     except ctrl_rank.Unavailable as e:
         note = f"Not ranked by Jev: {e}."
 
+    items = {r["id"]: {**r, "category": r["source"]} for r in ctrl_items.rows(Path(data_dir))}
+
     def marked(i, label):
         hit = entries[i][0]
-        return {**hit, "meta": f"{label} · {hit['meta']}"} if label else hit
+        # "row" is the Chat timeline entry, so a result is drawn (and answered) like any other message
+        row = hit.get("row") or items.get(f"{hit['kind']}-{hit['id']}")
+        return {**hit, "row": row, "label": label, **({"meta": f"{label} · {hit['meta']}"} if label else {})}
 
     top = sorted(ranked, key=ranked.get, reverse=True)
     results = [marked(i, f"{'Best match' if n == 0 else 'Match'} {round(ranked[i] * 100)}%") for n, i in enumerate(top)]

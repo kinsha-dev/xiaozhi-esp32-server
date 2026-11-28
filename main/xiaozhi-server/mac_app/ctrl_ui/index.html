@@ -20,7 +20,7 @@ th{color:var(--mut);font-weight:500;font-size:12px}td.t{white-space:nowrap;color
 .pill{padding:1px 8px;border-radius:99px;font-size:12px;background:var(--card)}.ok{color:var(--ok)}.error,.bad{color:var(--bad)}.warn{color:var(--warn)}
 button.act{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:4px 10px;border-radius:8px;cursor:pointer}
 button.act:hover{border-color:var(--acc)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.plugin{position:fixed;inset:64px 16px 16px;z-index:20;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.4);padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px}.plugin[hidden]{display:none}.plugin>header{position:static;padding:0 0 8px;justify-content:space-between}.cardbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.card .act:disabled{opacity:.45;cursor:default}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
 .card{background:var(--card);border-radius:12px;padding:14px}.card h3{margin:0 0 6px;font-size:14px;display:flex;justify-content:space-between}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--bad)}.dot.on{background:var(--ok)}
 .err{color:var(--bad);font-size:12px;margin-top:6px;word-break:break-word}.meta{color:var(--mut);font-size:12px}
@@ -31,7 +31,7 @@ button.act:hover{border-color:var(--acc)}
 .rdiv{border-top:1px solid var(--line)}.rbadge{display:inline-block;align-self:flex-start}.rtabs{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.rtabs button{font:inherit;border:1px solid var(--line);background:none;color:var(--fg);padding:3px 10px;border-radius:99px;cursor:pointer}.rtabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}.rlist{display:flex;flex-direction:column;gap:8px}
 .canreply{cursor:pointer}.canreply.sel{outline:2px solid var(--acc);outline-offset:-2px}.rbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--acc);padding:2px 0;cursor:pointer}.bub>.rbtn{display:block;margin-top:4px}
 .replybox{white-space:normal;cursor:auto;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}.bub.sel{width:min(480px,92%);max-width:92%}.replybox>div>div:last-child{flex-wrap:wrap}.replybox button{white-space:nowrap}.replybox textarea{min-width:0!important}.replybox .meta{border-left:3px solid var(--acc);padding-left:8px;white-space:pre-wrap;max-height:64px;overflow:hidden}
-.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.wabox{white-space:normal;color:var(--fg);display:block}.wabox input,.wabox textarea{display:block;width:100%;box-sizing:border-box;margin:6px 0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sbtn{position:absolute;top:4px;right:110px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}#search{position:absolute;inset:0;z-index:7;background:var(--bg);display:flex;flex-direction:column;gap:10px;padding:4px 0 12px}#search[hidden]{display:none}#search form{display:flex;gap:8px}#search input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sres{display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;min-height:0}#sres .bub{max-width:100%;flex:none}#sres textarea{width:100%;box-sizing:border-box;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
+.bub.me{align-self:flex-end;background:var(--acc);color:#fff}.bub.me .meta{color:rgba(255,255,255,.75)}.bub.bad{border:1px solid var(--bad)}.wabox{white-space:normal;color:var(--fg);display:block}.wabox input,.wabox textarea{display:block;width:100%;box-sizing:border-box;margin:6px 0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#sbtn{position:absolute;top:4px;right:110px;z-index:6;border-radius:99px;box-shadow:0 2px 8px rgba(0,0,0,.25)}#search{position:absolute;top:44px;left:50%;transform:translateX(-50%);width:min(640px,94%);box-sizing:border-box;z-index:7;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:6px;padding:10px}#search[hidden]{display:none}#search form{display:flex;gap:8px}#search input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}#search .meta:empty{display:none}#chatHost.searching .chatfeed{padding-top:150px}.sedit textarea{width:100%;box-sizing:border-box;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}.bub.nest,.thread.nest{margin-left:28px;margin-right:0;align-self:flex-start;border-left:2px solid var(--acc)}.bub.nest.me{align-self:flex-start}.bub .meta{margin-bottom:2px}
 #todoForm{display:flex;gap:8px;margin-bottom:12px}#todoText{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
 #todos td:first-child,#todos td.x{width:1%;white-space:nowrap}#todos td.tx{word-break:break-word}#todos td.done{color:var(--mut);text-decoration:line-through}#todos td.done .meta{text-decoration:none;display:inline-block;width:100%}#todos h2{margin:20px 0 4px}
 @media(max-width:600px){td.d{display:none}}
@@ -39,14 +39,14 @@ button.act:hover{border-color:var(--acc)}
 <header><h1>Vibi Ctrl</h1><nav id="nav"></nav><label class="meta" style="margin-left:auto" title="No mic, no spoken replies: only the animation and typed commands. Message Vibi from the Chat tab."><input type="checkbox" id="stealth" onchange="setStealth(this.checked)"> Stealth</label><label class="meta" style="margin-left:12px">Voice style <select id="style" onchange="setStyle(this.value)"></select></label></header>
 <main id="main"></main><div id="toast"></div>
 <script>
-const T="__TOKEN__",TABS=[["chat","Chat"],["components","Components"]];
-const OLD_TABS={board:"chat",actions:"chat",commands:"chat",notes:"chat",todo:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board, #actions, #commands links open Chat
+const T="__TOKEN__",TABS=[["chat","Chat"]];
+const OLD_TABS={board:"chat",actions:"chat",commands:"chat",notes:"chat",todo:"chat",components:"chat"},tabKey=k=>(TABS.find(x=>x[0]==(OLD_TABS[k]||k))||[])[0];  // old #board, #actions, #commands links open Chat
 let linkFilter={"#commands":{type:["commands"],action:["all"],hours:["0"]},"#notes":{type:["note"],hours:["0"]},"#todo":{type:["todo"],hours:["0"]}}[location.hash]||null;  // the old Commands, Notes and Todo lists
 let tab=tabKey(location.hash.slice(1))||tabKey(localStorage.getItem("vctrlTab"))||"chat",timer;
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,body){const r=await fetch(p+(p.includes("?")?"&":"?")+"t="+T,body?{method:"POST",body:JSON.stringify(body)}:{});return r.json()}
 function toast(m){const e=$("#toast");e.textContent=m;e.style.display="block";clearTimeout(e._t);e._t=setTimeout(()=>e.style.display="none",4500)}
-function nav(){$("#nav").innerHTML=TABS.map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
+function nav(){$("#nav").innerHTML=(TABS.length<2?[]:TABS).map(([k,n])=>`<button class="${k==tab?"on":""}" onclick="go('${k}')">${n}</button>`).join("")}
 function go(k){window.speechSynthesis?.cancel();tab=k;try{localStorage.setItem("vctrlTab",k)}catch(e){}nav();load()}
 
 /* ---- Chat tab: an A2UI v1.0 surface (https://a2ui.org). The "agent" side below emits createSurface / updateDataModel messages
@@ -83,7 +83,7 @@ function chatMessagesUpdate(m,direction="all"){const out=[];  // board rows (new
   for(const r of m.slice().reverse()){const first=out.length;add(r);
     if(r.nest)out.slice(first).forEach(b=>b.nest=true);else if(r.thread&&out[first])out[first].meta="Original conversation · "+out[first].meta}
   function add(r){const who=r.type=="computer"?"Computer use":CHAT_NAMES[r.source]||r.category,body=(r.nest&&r.said)||r.body||r.summary||"",bad=r.status=="failed"?"error":CHAT_NAMES[r.source]?"reply":"other";
-    const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>[...p,r.log].filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
+    const how=r.input&&r.input!=r.channel?r.input:"",line=(...p)=>[r.match,...p,r.log].filter(Boolean).join(" · "),acts=r.actions?.length?r.actions:null,missed=r.recognized===false?"unrecognized":"";
     if(r.channel=="note"||r.channel=="reminder"||r.item){out.push({meta:line(r.category,r.time,r.status),text:body,variant:"other",clamp:String(r.id),...(r.item?{item:r.item}:{})});return}
     if(r.channel=="whatsapp"){const sent=r.direction=="from",name=sent?(body.match(/^To ([^:\n]*):/)||[])[1]:r.contact;
       out.push({meta:line(r.category,r.time,r.status),text:body,variant:sent?"me":"other",clamp:String(r.id),wa:{contact:name||""}});return}
@@ -254,7 +254,7 @@ document.addEventListener("keydown",e=>{if(e.key=="Escape")Mic.cancel()});
 A2ui.onEvent=async(name,ctx,sf)=>{
   if(name=="send_reply")return Reply.send(ctx);
   if(name=="cancel_reply")return Reply.close();
-  if(name=="filter"){try{localStorage.setItem("vctrlFilter",JSON.stringify(sf.data.filter))}catch(e){}Reply.close();filterButton();A2ui.stick=true;return loadChat()}
+  if(name=="filter"){if(searching)searchOpen(false);try{localStorage.setItem("vctrlFilter",JSON.stringify(sf.data.filter))}catch(e){}Reply.close();filterButton();A2ui.stick=true;return loadChat()}
   if(name=="pick_file"){chatFile.click();return}
   if(name=="paste")return pasteClipboard();
   if(name=="mic")return Mic.toggle(sf);
@@ -265,6 +265,7 @@ A2ui.onEvent=async(name,ctx,sf)=>{
   const text=(ctx.text||"").trim(),to=(ctx.to||[])[0],f=chatFile.files[0];if(!text)return;const body={to,text};
   if(f){if(to=="computer"){toast("Files can't be sent to Computer use");return}if(f.size>5*1024*1024){toast("File too large (5 MB max)");return}body.file={name:f.name,data:await readFile(f)}}
   const r=await api("/api/chat",body);if(r.error){toast(r.error);return}
+  searchOpen(false);
   A2ui.stick=true;{const fd=document.querySelector(".chatfeed");if(fd)fd.scrollTop=fd.scrollHeight}A2ui.set(sf,"/chat/text","");A2ui.set(sf,"/chat/fileName","");chatFile.value="";A2ui.refresh(sf);
   toast(r.to=="todo"||r.to=="note"?r.note:r.to=="computer"?"Computer use started. "+r.note:r.to=="vibi"?"Sent to Vibi; the reply will appear here":r.to=="gemini"?"Asked Gemini; the answer will appear here":r.note||"Sent to "+(r.to=="grok"?"Grok Bot":"Claude"));load()};
 let chatSeq=0;
@@ -272,13 +273,26 @@ const defaultFilter=()=>({type:["all"],action:["recognized"],input:["all"],direc
 function filterButton(){const b=$("#fbtn"),f=A2ui.surfaces.chat.data.filter,d=defaultFilter(),n=Object.keys(d).filter(k=>f[k][0]!=d[k][0]).length;if(!b)return;b.textContent="Filter"+(n?` (${n})`:"")}
 function filterOpen(on){$("#chatHost")?.classList.toggle("fopen",on);$("#fbtn")?.setAttribute("aria-expanded",on)}
 function savedFilter(){const f=defaultFilter();try{const s=JSON.parse(localStorage.getItem("vctrlFilter"));for(const k in f)if(typeof s?.[k]?.[0]=="string")f[k]=[s[k][0]]}catch(e){}return f}
-/* Search: past chat entries, todos and notes. A note or todo result is answered with its new text, which replaces it. */
-let searchSeq=0;
+/* Search: a floating box over the chat; the results are shown in the chat itself, best first, and work like any other
+   entry. Closing the box brings the timeline back. */
+let searchSeq=0,searching=false;
 function searchShell(){const s=document.createElement("section");s.id="search";s.hidden=true;
-  s.innerHTML='<form><input type="search" maxlength="200" placeholder="Search chat, todos and notes…" aria-label="Search"><select class="act" aria-label="Search in"><option value="all">Everything</option><option value="chat">Chat</option><option value="todo">Todos</option><option value="note">Notes</option></select><button class="act pri">Search</button><button type="button" class="act">Close</button></form><div id="sres"></div>';
+  s.innerHTML='<form><input type="search" maxlength="200" placeholder="Search chat, todos and notes…" aria-label="Search"><select class="act" aria-label="Search in"><option value="all">Everything</option><option value="chat">Chat</option><option value="todo">Todos</option><option value="note">Notes</option></select><button class="act pri">Search</button><button type="button" class="act" aria-label="Close search">✕</button></form><div class="meta" aria-live="polite"></div>';
   const f=s.querySelector("form");f.onsubmit=e=>{e.preventDefault();runSearch()};f.querySelector("select").onchange=()=>runSearch();f.lastElementChild.onclick=()=>searchOpen(false);
-  s.onkeydown=e=>{if(e.key=="Escape"){const open=e.target.closest(".sedit");open?open.remove():searchOpen(false)}};return s}
-function searchOpen(on){const s=$("#search");if(!s)return;s.hidden=!on;if(on){Reply.close();filterOpen(false);s.querySelector("input").focus()}}
+  s.onkeydown=e=>{if(e.key=="Escape"){e.preventDefault();searchOpen(false)}};return s}
+function searchOpen(on){const s=$("#search");if(!s)return;s.hidden=!on;$("#chatHost").classList.toggle("searching",on);
+  if(on){Reply.close();filterOpen(false);s.querySelector("input").select();s.querySelector("input").focus();return}
+  searchSeq++;s.querySelector(".meta").textContent="";if(searching){searching=false;A2ui.stick=true;load()}}
+const refresh=()=>searching?runSearch():load();
+async function runSearch(){const s=$("#search"),say=t=>s.querySelector(".meta").textContent=t,q=s.querySelector("input").value.trim(),seq=++searchSeq;
+  if(!q){say("");if(searching){searching=false;A2ui.stick=true;load()}return}
+  say("Searching…");let r;try{r=await api("/api/search?"+new URLSearchParams({q,scope:s.querySelector("select").value}))}catch(e){r={error:"Search failed"}}
+  if(seq!=searchSeq)return;if(r.error){say(r.error);return}
+  const rows=r.results.filter(h=>h.row).map(h=>({...h.row,body:h.row.said||h.row.body,match:h.label,thread:undefined,nest:undefined}));
+  say([rows.length?`${rows.length} result${rows.length>1?"s":""}`:"Nothing found",r.note].filter(Boolean).join(" · "));
+  if(!rows.length){if(searching){searching=false;A2ui.stick=true;load()}return}
+  searching=true;Reply.close();document.querySelectorAll(".chatfeed .sedit").forEach(e=>e.remove());
+  A2ui.process(chatMessagesUpdate(rows.reverse()));const feed=$(".chatfeed");if(feed)feed.scrollTop=0}
 /* Reply to a note or todo with its new text, which replaces it. */
 function editor(el,h,saved){if(el.querySelector(".sedit"))return;const w=document.createElement("div");w.className="sedit";
   w.innerHTML=`<textarea rows="${h.kind=="note"?6:2}" aria-label="New text"></textarea><button type="button" class="act pri">Save</button> <button type="button" class="act">Cancel</button>`;
@@ -288,8 +302,8 @@ function editor(el,h,saved){if(el.querySelector(".sedit"))return;const w=documen
   el.append(w);t.focus()}
 function itemBar(it){const bar=document.createElement("div");bar.className="cmdbar";bar.style.flexWrap="wrap";
   const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent=text;b.onclick=run;bar.append(b)};
-  const todo=async op=>{const r=await api("/api/todos",{op,id:it.id});if(r.error)toast(r.error);load()};
-  button("↩ Reply to edit",()=>editor(bar.parentNode,it,()=>load()));
+  const todo=async op=>{const r=await api("/api/todos",{op,id:it.id});if(r.error)toast(r.error);refresh()};
+  button("↩ Reply to edit",()=>editor(bar.parentNode,it,()=>refresh()));
   if(it.kind=="todo"){button(it.done?"Reopen":"Mark done",()=>todo(it.done?"reopen":"done"));button("Delete",()=>confirm("Delete this todo?")&&todo("delete"))}
   return bar}
 /* Reply on WhatsApp: the user checks the name, types, and confirms who gets it before anything is sent. */
@@ -301,41 +315,36 @@ function whatsappBar(wa){const bar=document.createElement("div");bar.className="
       try{const who=await api("/api/whatsapp",body);if(who.error){toast(who.error);return}
         if(!confirm(`Send this WhatsApp to ${who.contact} (+${who.phone})?\n\n${body.text}`))return;
         const r=await api("/api/whatsapp",{...body,phone:who.phone,confirmed:true});if(r.error){toast(r.error);return}
-        w.remove();toast("Sent to "+r.contact);load()}catch(e){toast("Could not send")}finally{send.disabled=false}};
+        w.remove();toast("Sent to "+r.contact);refresh()}catch(e){toast("Could not send")}finally{send.disabled=false}};
     host.append(w);text.focus()};
   return bar}
-async function runSearch(){const s=$("#search"),box=$("#sres"),q=s.querySelector("input").value.trim(),seq=++searchSeq;if(!q){box.replaceChildren();return}
-  box.innerHTML='<div class="meta">Searching…</div>';
-  const r=await api("/api/search?"+new URLSearchParams({q,scope:s.querySelector("select").value}));if(seq!=searchSeq)return;
-  const say=t=>{const d=document.createElement("div");d.className="meta";d.textContent=t;return d};
-  if(r.error||!r.results.length){box.innerHTML=`<div class="empty">${esc(r.error||"Nothing found")}</div>`;if(r.note)box.append(say(r.note));return}
-  box.replaceChildren(...(r.note?[say(r.note)]:[]),...r.results.map(searchResult))}
-function searchResult(h){const el=document.createElement("div");el.className="bub";el.innerHTML=`<div class="meta">${esc(h.meta)}</div><div class="body">${esc(h.text)}</div>`;
-  const button=(text,run)=>{const b=document.createElement("button");b.type="button";b.className="rbtn";b.textContent=text;b.onclick=run;el.append(b);return b},body=el.querySelector(".body");
-  if(h.text.length>400){body.classList.add("clamp");const more=button("Expand",()=>{more.textContent=body.classList.toggle("clamp")?"Expand":"Collapse"});more.style.marginRight="12px"}
-  if(h.kind!="chat")button("↩ Reply to edit",()=>editor(el,h,r=>el.replaceWith(searchResult({...h,text:r.text}))));
-  return el}
-async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter={...savedFilter(),...linkFilter};linkFilter=null;A2ui.mount("chat",$("#chatHost"));
+async function loadChat(){if(!$("#chatHost")){$("#main").innerHTML='<div id="chatHost"></div>';A2ui.process(CHAT_SURFACE);A2ui.surfaces.chat.data.filter={...savedFilter(),...linkFilter};linkFilter=null;A2ui.mount("chat",$("#chatHost"));searching=false;
     const b=document.createElement("button");b.id="fbtn";b.type="button";b.className="act";b.onclick=()=>filterOpen(!$("#chatHost").classList.contains("fopen"));$("#chatHost").append(b);filterOpen(false);filterButton();
     const find=document.createElement("button");find.id="sbtn";find.type="button";find.className="act";find.textContent="🔍 Search";find.onclick=()=>searchOpen(true);$("#chatHost").append(find,searchShell())}
   if($(".chatfeed .sedit"))return;  // a redraw would drop a half-typed edit
+  if(searching)return;  // the chat is showing search results
   const seq=++chatSeq,f=A2ui.surfaces.chat.data.filter,q=new URLSearchParams({type:f.type[0],action:f.action[0],input:f.input[0],direction:f.direction[0],hours:f.hours[0]});
-  const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat")A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}
+  const rows=await api("/api/messages?"+q);if(seq==chatSeq&&tab=="chat"&&!searching)A2ui.process(chatMessagesUpdate(rows,f.direction[0]))}
 async function load(){
-  document.body.classList.toggle("chat",tab=="chat");
-  if(tab=="chat")return loadChat();
-  if(tab=="components"){const c=await api("/api/components");$("#main").innerHTML='<div class="grid">'+c.map(x=>`<div class="card"><h3><span><span class="dot ${x.running?"on":""}"></span>${esc(x.name)}</span><span class="meta">${x.running?"running":"stopped"}${x.pid?" · pid "+x.pid:""}</span></h3>
-  <div class="meta">${esc(x.detail)}</div>${x.error?`<div class="err">last error: ${esc(x.error)}</div>`:""}${x.key=="board"?`<p><button class="act" onclick="mute(${!x.muted})">${x.muted?"Unmute":"Mute"} board &amp; Mac</button></p>`:""}${x.restart?`<p><button class="act" onclick="restart('${esc(x.restart)}','${esc(x.name)}')">Restart</button></p>`:""}</div>`).join("")+"</div>";return}
-  const rows=await api("/api/history?kind="+tab);
-  $("#main").innerHTML=rows.length?`<table><tr><th>Time</th><th>Entry</th><th>Status</th><th>Result</th><th></th></tr>`+rows.map(r=>`<tr><td class="t">${esc(r.time)}</td>
-  <td>${esc(r.title)}${r.risky?' <span class="pill warn">asks first</span>':""}${r.source?`<div class="meta">${esc(r.source)}</div>`:""}</td><td><span class="pill ${r.status=="error"?"error":r.status=="ok"||r.status=="done"?"ok":""}">${esc(r.status)}</span></td>
-  <td class="d">${esc(r.detail)}</td><td>${r.rerun?`<button class="act" onclick="rerun('${esc(r.id)}',${r.risky})">Rerun</button>`:""}</td></tr>`).join("")+"</table>":'<div class="empty">Nothing yet. New voice requests show up here.</div>'}
+  document.body.classList.toggle("chat",tab=="chat");return loadChat()}
 async function rerun(id,risky,kind=tab){if(risky&&!confirm("This is a risky kind of action. Vibi will speak the details and wait for your spoken yes before doing anything. Continue?"))return;const r=await api("/api/rerun",{kind,id});toast(r.note||r.error)}
 async function mute(on){await api("/api/mute",{on});toast(on?"Muted: board and Mac are off":"Unmuted");load()}
-async function restart(k,n){if(!confirm("Restart "+n+"?"))return;const r=await api("/api/restart",{key:k});toast(r.ok?(r.note||n+" restarting"):"Failed: "+r.error);setTimeout(load,3000)}
 async function loadStealth(){const r=await api("/api/stealth");$("#stealth").checked=!!r.on}
 async function setStealth(on){const r=await api("/api/stealth",{on});toast(on?"Stealth on: no mic, no voice. Type commands in the Chat tab.":"Stealth off");$("#stealth").checked=!!r.on}
 async function loadStyle(){const s=await api("/api/style");$("#style").innerHTML=s.styles.map(x=>`<option ${x==s.style?"selected":""}>${x}</option>`).join("")}
 async function setStyle(v){const r=await api("/api/style",{style:v});toast("Voice style: "+r.style+(r.error?" ("+r.error+")":""))}
 nav();loadStyle();loadStealth();load();timer=setInterval(()=>{if(!document.hidden)load()},5000);
-</script></body></html>
+</script><script>
+/* Plugins (ctrl_ui/plugins/*.js): each gets a header button that opens a floating panel it draws into. */
+const VibiPlugins={list:[],open:null,
+ add(p){const nav=$("#nav"),b=document.createElement("button");b.type="button";b.id="plug-"+p.id;b.className="act";b.textContent=p.label;b.onclick=()=>this.show(this.open==p?null:p);nav.after(b);
+  const box=document.createElement("section");box.className="plugin";box.hidden=true;box.innerHTML=`<header><b>${esc(p.title)}</b><button type="button" class="act" aria-label="Close ${esc(p.title)}">✕</button></header><div></div>`;
+  box.querySelector("button").onclick=()=>this.show(null);document.body.append(box);p.box=box;this.list.push(p);
+  if(location.hash=="#"+p.id)this.show(p);else p.render(box.lastElementChild).catch(()=>{})},
+ show(p){clearInterval(this.timer);for(const q of this.list)q.box.hidden=q!==p;this.open=p;if(!p)return;this.draw();
+  if(p.every)this.timer=setInterval(()=>{if(!document.hidden)this.draw()},p.every)},
+ draw(){const p=this.open;p&&p.render(p.box.lastElementChild).catch(()=>{p.box.lastElementChild.textContent="Not available right now"})}};
+document.addEventListener("keydown",e=>{if(e.key=="Escape"&&VibiPlugins.open)VibiPlugins.show(null)});
+</script>
+<!--PLUGINS-->
+</body></html>

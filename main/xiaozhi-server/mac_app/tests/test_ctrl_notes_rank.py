@@ -100,5 +100,5 @@ def test_without_jev_word_search_still_works(data, monkeypatch):
 
 def test_the_tabs_are_merged_into_chat():
     html = UI.read_text()
-    assert 'TABS=[["chat","Chat"],["components","Components"]]' in html and "loadTodos" not in html
+    assert 'TABS=[["chat","Chat"]]' in html and "loadTodos" not in html
     assert '{label:"Note (save)",value:"note"}' in html

@@ -514,6 +514,34 @@ def launchd_status(label: str, uid: int = None, run=_run) -> dict:
             "detail": (state.group(1) if state else "") + (f", last exit {code.group(1)}" if code and not pid else "")}
 
 
+STAMP = re.compile(r"^(\d{6} \d\d:\d\d:\d\d|\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d)")
+
+
+def last_error_at(log: Path, tail_bytes: int = 200_000) -> str:
+    """When the line last_error() reports was logged ("Nov 28 02:21"): its own time stamp or the nearest one above it
+    (a traceback has none), else when the log was last written, said as such. Empty when there is no error."""
+    try:
+        with open(log, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - tail_bytes))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+        written = os.path.getmtime(log)
+    except OSError:
+        return ""
+    at = next((i for i in range(len(lines) - 1, -1, -1) if ERR_LINE.search(lines[i])), None)
+    if at is None:
+        return ""
+    for line in reversed(lines[max(0, at - 200):at + 1]):
+        m = STAMP.match(line)
+        if m:
+            try:
+                form = "%y%m%d %H:%M:%S" if m[1][6] == " " else "%Y-%m-%d %H:%M:%S"
+                return datetime.strptime(m[1].replace("T", " "), form).strftime("%b %d %H:%M")
+            except ValueError:
+                continue
+    return datetime.fromtimestamp(written).strftime("%b %d %H:%M") + " or earlier"
+
+
 def last_error(log: Path, tail_bytes: int = 200_000) -> str:
     try:
         with open(log, "rb") as f:
@@ -547,14 +575,15 @@ def components(data_dir: Path, server_dir: Path, status=launchd_status, now=time
     d = Path(data_dir)
     out = []
 
-    def add(key, name, running, pid="", detail="", error="", restart=None):
+    def add(key, name, running, pid="", detail="", error="", restart=None, error_at=""):
         out.append({"key": key, "name": name, "running": running, "pid": pid, "detail": detail, "error": error,
-                    "restart": restart})
+                    "error_at": error_at if error else "", "restart": restart})
 
     for key, name, logf in (("server", "Voice server", d / "logs" / "server.log"), ("whisper", "Whisper", d / "logs" / "whisper.log")):
         s = status(LABELS[key])
-        add(key, name, s["running"], s["pid"], s["detail"], last_error(logf), LABELS[key])
-    add("macapp", "Mac app", True, os.getpid(), "this app", last_error(Path(server_dir) / "data" / "mac_app.log"), "macapp")
+        add(key, name, s["running"], s["pid"], s["detail"], last_error(logf), LABELS[key], last_error_at(logf))
+    app_log = Path(server_dir) / "data" / "mac_app.log"
+    add("macapp", "Mac app", True, os.getpid(), "this app", last_error(app_log), "macapp", last_error_at(app_log))
     # board link
     link = _read(d / "board_link") or "auto"
     hb = _read(d / "board_heartbeat")
@@ -578,7 +607,8 @@ def components(data_dir: Path, server_dir: Path, status=launchd_status, now=time
     except ValueError:
         pass
     add("notif", "Notification collector", bool(out[0]["running"]) and not st.get("error"), out[0]["pid"],
-        "runs inside the voice server", str(st.get("error") or st.get("problem") or "")[:200], LABELS["server"])
+        "runs inside the voice server", str(st.get("error") or st.get("problem") or "")[:200], LABELS["server"],
+        datetime.fromtimestamp(st["ts"]).strftime("%b %d %H:%M") if isinstance(st.get("ts"), (int, float)) else "")
     topic = _read(d / "ntfy_topic")
     add("ntfy", "ntfy topic", bool(topic), "", topic or "not set")
     tv = _read(d / "tv_mac.txt")
