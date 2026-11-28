@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from mac_app import ctrl_backend as be
+from mac_app import ctrl_search
 from mac_app.ctrl_passkey import JS, LOGIN_HTML, Passkeys
 
 UI = Path(__file__).with_name("ctrl_ui") / "index.html"
@@ -58,7 +59,19 @@ class CtrlPanel:
                     return 400, "application/json", json.dumps({"error": str(e)}).encode()
                 if todo:
                     return 200, "application/json", json.dumps(todo).encode()
-            if path == "/api/todos":
+            if path in ("/api/search", "/api/edit"):
+                try:
+                    if path == "/api/search" and method == "GET":
+                        data = {"results": ctrl_search.search(self.data_dir, query.get("q", ""), query.get("scope", "all"))}
+                    elif path == "/api/edit" and method == "POST":
+                        data = {"item": ctrl_search.edit(self.data_dir, *(str(body.get(k, "")) for k in ("kind", "id", "text", "old")))}
+                    else:
+                        return 404, "application/json", b'{"error":"not found"}'
+                except KeyError:
+                    return 404, "application/json", b'{"error":"it is gone: search again"}'
+                except ValueError as e:
+                    return 400, "application/json", json.dumps({"error": str(e)}).encode()
+            elif path == "/api/todos":
                 try:
                     if method == "POST":
                         data = {"todo": be.todo_op(self.data_dir, str(body.get("op", "")), str(body.get("text", "")),
