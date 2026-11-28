@@ -10,7 +10,7 @@ from typing import Callable
 
 from mac_app import earphones, tones, wake
 from mac_app.audio import AudioError, refresh_devices
-from mac_app.outbox import watch
+from mac_app.outbox import skip_pending, watch
 
 TAIL_S = 0.25  # ignore the mic this long after our own speech / a session
 HEARTBEAT_TIMEOUT = 300  # seconds without a board heartbeat before the menu bar shows X
@@ -150,6 +150,8 @@ class Controller:
     def set_stealth(self, on: bool, write: bool = True):
         """Stealth: the mic is off (no wake word, no listening), nothing is read out, queued updates wait. A typed command from
         Vibi Ctrl still runs a session, silently: the animation shows, the reply goes to captions and the Chat tab."""
+        if self.stealth and not on and not self.muted:
+            self._skip_backlog()  # before the flag goes: the server reads messages out as soon as it is gone
         self.stealth = bool(on)
         f = self._stealth_file()
         if write and f is not None:
@@ -180,6 +182,8 @@ class Controller:
             self.set_stealth(sf.exists(), write=False)
 
     def set_muted(self, muted: bool, write: bool = True):
+        if self.muted and not muted and not self.stealth:
+            self._skip_backlog()
         self.muted = muted
         f = self._mute_file()
         if write and f is not None:
@@ -191,6 +195,11 @@ class Controller:
             self._mic.stop()
         else:
             self._start_mic()
+
+    def _skip_backlog(self):
+        """Back from Mute or Stealth: what queued meanwhile is not read out (it stays in the Chat tab)."""
+        if self.cfg.data_dir:
+            skip_pending(self.cfg.data_dir / "outbox.jsonl")
 
     def board_ble_linked(self) -> bool:
         """True while this app holds the Bluetooth link to the board (data/board_ble = our pid)."""

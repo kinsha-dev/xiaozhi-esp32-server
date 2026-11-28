@@ -1,5 +1,8 @@
+import json
 import os
 import time
+
+import pytest
 
 from mac_app.app import Controller
 from mac_app.config import Config
@@ -123,3 +126,38 @@ def test_listen_mode_is_exclusive(tmp_path):
     with pytest.raises(ValueError):
         ctl.set_listen_mode("loud")
     ctl.stop()
+
+
+def _outbox(tmp_path):
+    (tmp_path / "outbox.jsonl").write_text(json.dumps({"id": "a", "ts": time.time(), "status": "pending", "text": "hi"}) + "\n")
+
+
+def _status(tmp_path):
+    return json.loads((tmp_path / "outbox.jsonl").read_text())["status"]
+
+
+@pytest.mark.parametrize("silent", ["stealth", "mute"])
+def test_returning_to_active_skips_the_backlog(tmp_path, silent):
+    ctl, _ = make(tmp_path)
+    ctl.set_listen_mode(silent)
+    _outbox(tmp_path)
+    ctl.set_listen_mode("active")
+    assert _status(tmp_path) == "skipped"
+
+
+@pytest.mark.parametrize("flag", ["stealth", "muted"])
+def test_flag_cleared_elsewhere_skips_the_backlog(tmp_path, flag):
+    ctl, _ = make(tmp_path)
+    (tmp_path / flag).write_text("1")
+    ctl.sync_mute(every=0)
+    _outbox(tmp_path)
+    (tmp_path / flag).unlink()
+    ctl.sync_mute(every=0)
+    assert _status(tmp_path) == "skipped"
+
+
+def test_staying_active_keeps_pending_messages(tmp_path):
+    ctl, _ = make(tmp_path)
+    _outbox(tmp_path)
+    ctl.set_listen_mode("active")
+    assert _status(tmp_path) == "pending"
