@@ -2,8 +2,9 @@
 """Copies WhatsApp Desktop notifications from the macOS notification database into a small JSON inbox.
 
 This is the only process that needs Full Disk Access; the XiaoZhi server then reads just the inbox file
-(whatsapp_reader.py). Stdlib only, read-only on the database, writes one file (mode 600) under the data dir,
-keeps the last 24 h / 50 messages, never touches the network. Run it as /usr/bin/python3 (see MAC_CONTROL.md).
+(whatsapp_reader.py). Stdlib only, read-only on the database, writes its files (mode 600) under the data dir,
+keeps the last 24 h / 50 messages, never touches the network. For a received photo or video it also reads WhatsApp
+Desktop's ChatStorage.sqlite (read-only) and copies that one file to whatsapp_media/ (mode 600) until its row ages out. Run it as /usr/bin/python3 (see MAC_CONTROL.md).
 
   whatsapp_collector.py            # loop forever, refresh every 20 s
   whatsapp_collector.py --once     # one refresh (used by tests / launchd StartInterval)
@@ -20,6 +21,7 @@ import os
 import hashlib
 import plistlib
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -38,6 +40,15 @@ APP_MATCH = "whatsapp"
 APPLE_EPOCH = 978307200  # CFAbsoluteTime 0 = 2001-01-01 UTC
 MAX_AGE = 24 * 3600
 MAX_MESSAGES = 50
+# Received photos and videos. The notification has only the banner text; the file is in WhatsApp Desktop's own store.
+WA_STORE = Path(os.environ.get(
+    "WHATSAPP_STORE", Path.home() / "Library/Group Containers/group.net.whatsapp.WhatsApp.shared"))
+MEDIA_DIR_NAME = "whatsapp_media"
+MEDIA_WINDOW = 180  # seconds between a message and its notification
+MAX_MEDIA_BYTES = 64 * 1024 * 1024
+MEDIA_TYPES = {1: ("image", {".jpg", ".jpeg", ".png", ".webp"}), 2: ("video", {".mp4", ".mov", ".m4v"})}
+MEDIA_LABEL = re.compile(r"^(photo|image|picture|video|gif)(?:\s*\([^)]{0,24}\))?$", re.I)
+BIDI_MARKS = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 MAIL_CONFIG = Path(os.environ.get("MAIL_DIGEST_CONFIG", Path.home() / "esp/voice-note-box/data/mail_digest.json"))
 GMAIL_TOKEN = Path(os.environ.get("GMAIL_TOKEN", Path.home() / "esp/voice-note-box/data/google/token.json"))
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -133,6 +144,85 @@ def fetch_all(db=None):
                         "sub": str(req.get("subt") or "").strip(), "body": body,
                         "ts": float(delivered) + APPLE_EPOCH if delivered else time.time()})
     return out
+
+
+def _plain(text):
+    """Banner or name text without direction marks, leading emoji or a trailing ellipsis."""
+    t = " ".join(BIDI_MARKS.sub("", str(text or "")).split())
+    return re.sub(r"^[^\w(]+", "", t).rstrip("\u2026 ").casefold()
+
+
+def _banner_matches(body, kind, caption):
+    label = MEDIA_LABEL.match(body)
+    if label:
+        return ("video" if label.group(1).lower() in ("video", "gif") else "image") == kind
+    return len(body) >= 3 and _plain(caption).startswith(body)  # a captioned photo shows the caption instead
+
+
+def _incoming_media(store, since):
+    """[(ts, chat name, type, relative path, caption)] for received photos and videos. Read-only."""
+    con = sqlite3.connect(f"file:{store / 'ChatStorage.sqlite'}?mode=ro", uri=True, timeout=2)
+    try:
+        rows = con.execute(
+            "SELECT m.ZMESSAGEDATE, s.ZPARTNERNAME, m.ZMESSAGETYPE, i.ZMEDIALOCALPATH, i.ZTITLE FROM ZWAMESSAGE m "
+            "JOIN ZWACHATSESSION s ON s.Z_PK = m.ZCHATSESSION JOIN ZWAMEDIAITEM i ON i.ZMESSAGE = m.Z_PK "
+            "WHERE m.ZISFROMME = 0 AND m.ZMESSAGETYPE IN (1, 2) AND m.ZMESSAGEDATE >= ?",
+            (since - APPLE_EPOCH,)).fetchall()
+    finally:
+        con.close()
+    return [(ts + APPLE_EPOCH, name, kind, rel, caption) for ts, name, kind, rel, caption in rows if rel]
+
+
+def _copy_media(store, rel, exts, folder):
+    """Copy one file out of WhatsApp's store. None when it is missing, outside the store, too big or the wrong type."""
+    root = (store / "Message").resolve()
+    source = root / rel
+    if source.is_symlink() or source.suffix.lower() not in exts:
+        return None
+    source = source.resolve()
+    if root not in source.parents or not source.is_file():
+        return None
+    size = source.stat().st_size
+    if not 0 < size <= MAX_MEDIA_BYTES:
+        return None
+    media_id = hashlib.sha1(rel.encode()).hexdigest()[:12]
+    dest = folder / f"{media_id}{source.suffix.lower()}"
+    if not dest.is_file() or dest.stat().st_size != size:
+        tmp = folder / f".{media_id}.tmp"
+        with open(source, "rb") as src, os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as out:
+            shutil.copyfileobj(src, out)
+        tmp.replace(dest)
+    return {"id": media_id, "file": f"{folder.name}/{dest.name}", "bytes": size}
+
+
+def attach_media(msgs, data_dir=None, store=None):
+    """Add ``media`` to each WhatsApp notification that is a received photo or video, and drop copies no row uses."""
+    data_dir, store = Path(data_dir or DATA_DIR), Path(store or WA_STORE)
+    folder = data_dir / MEDIA_DIR_NAME
+    try:
+        found = _incoming_media(store, min((m["ts"] for m in msgs), default=time.time()) - MEDIA_WINDOW)
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        claimed, keep = set(), set()
+        for msg in msgs:
+            body, names = _plain(msg["body"]), {_plain(msg["sender"]), _plain(msg["group"])} - {""}
+            near = sorted((abs(ts - msg["ts"]), rel, kind, name, caption) for ts, name, kind, rel, caption in found)
+            for gap, rel, kind, name, caption in near:
+                if gap > MEDIA_WINDOW or rel in claimed or _plain(name) not in names:
+                    continue
+                what, exts = MEDIA_TYPES[kind]
+                if not _banner_matches(body, what, caption):
+                    continue
+                claimed.add(rel)
+                saved = _copy_media(store, rel, exts, folder)
+                if saved:
+                    msg["media"] = {**saved, "kind": what}
+                    keep.add(Path(saved["file"]).name)
+                break
+        for old in folder.iterdir():
+            if old.name not in keep:
+                old.unlink(missing_ok=True)
+    except (sqlite3.Error, OSError) as e:
+        print(f"whatsapp_collector: media: {e}", file=sys.stderr)
 
 
 def mail_config():
@@ -309,6 +399,7 @@ def refresh_once():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
         msgs = [m for m in fetch() if m["ts"] >= cutoff][:MAX_MESSAGES]
+        attach_media(msgs)
         _write(INBOX, msgs)
         others = fetch_all()
         db_error = None

@@ -136,6 +136,19 @@ CHAT_LIMIT = 4000
 FILE_LIMIT = 5 * 1024 * 1024
 
 
+def media(data_dir, media_id: str):
+    """(bytes, content type) of a chat photo or video, found by the voice box's message board, or None."""
+    board = _load_module("vibi_message_board", data_dir, "VIBI_MESSAGE_BOARD", "message_board.py")
+    find = getattr(board, "media_file", None)
+    if not find or not re.fullmatch(r"[a-f0-9]{8,32}", media_id or ""):
+        return None
+    found = find(Path(data_dir), media_id)
+    try:
+        return (found[0].read_bytes(), found[1]) if found else None
+    except OSError:
+        return None
+
+
 def _mark_risky(data_dir: Path, rows: list):
     """A command also asks first when its wording is risky (the history log's own rule, used for actions)."""
     log = _load_module("vibi_history_log", data_dir, "VIBI_HISTORY_LOG", "plugin/history_log.py")
