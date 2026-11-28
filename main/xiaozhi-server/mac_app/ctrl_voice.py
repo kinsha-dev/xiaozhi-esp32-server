@@ -298,7 +298,7 @@ def _board_input(data_dir: Path, rows: list) -> list:
 
     def of(r):
         rid = str(r.get("id"))
-        if r.get("source") in ("Gemini", "Todo") or r.get("channel") == "typed":
+        if r.get("source") in ("Gemini", "Todo", "Siri") or r.get("channel") == "typed":
             return "typed"  # only the panel files these
         if rid.endswith("-reply"):
             return "voice"  # a spoken answer to a message Vibi read out

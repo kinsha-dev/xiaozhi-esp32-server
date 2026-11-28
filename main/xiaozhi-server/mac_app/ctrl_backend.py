@@ -49,8 +49,8 @@ def _row(id_, ts, title, status="ok", detail="", risky=False, rerun=None, source
             "status": status, "detail": detail, "risky": risky, "rerun": rerun, "source": source}
 
 
-CONVERSATION_TYPES = ("claude", "grok", "gemini", "computer", "vibi", "todo")
-_SOURCE_TYPES = {"Claude": "claude", "Grok Bot": "grok", "Gemini": "gemini", "Vibi": "vibi", "Todo": "todo",
+CONVERSATION_TYPES = ("claude", "grok", "gemini", "siri", "computer", "vibi", "todo")
+_SOURCE_TYPES = {"Claude": "claude", "Grok Bot": "grok", "Gemini": "gemini", "Siri": "siri", "Vibi": "vibi", "Todo": "todo",
                  "WhatsApp": "whatsapp", "Mail digest": "mail"}
 
 
@@ -71,6 +71,7 @@ def message_type(row: dict) -> str:
 def _has_direction(row: dict, direction: str) -> bool:
     # a Gemini / Todo "Q: ... A: ..." row is both what was asked and the answer
     both = (row.get("source") in ("Gemini", "Todo") and str(row.get("body")).startswith("Q: ")) or (
+        row.get("source") == "Siri" and str(row.get("body")).startswith("You: ")) or (
         row.get("channel") == "typed" and str(row.get("body")).startswith("You: "))
     return row.get("direction") == direction or both
 
@@ -318,6 +319,24 @@ def chat(data_dir: Path, to: str, text: str, file: dict = None) -> dict:
         tmp.replace(req / f"{mid}.json")
         _nudge_grok(d, mid)
     return {"id": mid, "to": to}
+
+
+def siri_chat(data_dir: Path, text: str, file=None, confirmed: bool = False) -> dict:
+    """A Chat tab message for Siri. ``server/siri_chat.py`` in the voice-box repo runs the Shortcut and files the reply.
+
+    A missing Shortcut or a computer that is not a Mac comes back inside ``note`` (the module does not raise for those).
+    """
+    if file:
+        raise ValueError("files can't be sent to Siri")
+    said = " ".join(str(text or "").split())
+    if not said or len(said) > CHAT_LIMIT:
+        raise ValueError("empty or too long")
+    mod = _load_module("vibi_siri_chat", data_dir, "VIBI_SIRI_CHAT", "siri_chat.py")
+    if mod is None or not hasattr(mod, "chat_turn"):
+        raise ValueError("Send to Siri is not available: update the voice note box repo")
+    result = mod.chat_turn(Path(data_dir), said, confirmed=confirmed)
+    return {"id": str(result.get("id") or ""), "to": "siri", "note": result.get("reply") or result.get("spoken") or "",
+            "ok": bool(result.get("ok")), "confirm": bool(result.get("needs_confirmation"))}
 
 
 # --- microphone (Chat tab) ------------------------------------------------------------------------
