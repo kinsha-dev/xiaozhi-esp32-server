@@ -5,6 +5,7 @@ import ctypes.util
 import hmac
 import json
 import os
+import re
 import secrets
 import subprocess
 import threading
@@ -33,6 +34,27 @@ def page() -> bytes:
     return UI.read_bytes().replace(b"<!--PLUGINS-->", scripts)
 
 
+def byte_range(data, header):
+    """(status, bytes, Content-Range) for one HTTP Range header. Video players need this to start and seek."""
+    found = re.match(r"^bytes=(\d*)-(\d*)$", str(header or "").strip())
+    if not found or found.group(1) == found.group(2) == "":
+        return 200, data, ""
+    size, first, last = len(data), found.group(1), found.group(2)
+    start = int(first) if first else max(size - int(last), 0)
+    end = min(int(last), size - 1) if first and last else size - 1
+    if start >= size or start > end:
+        return 416, b"", f"bytes */{size}"
+    return 206, data[start:end + 1], f"bytes {start}-{end}/{size}"
+
+
+def _media_range(path, headers, code, data):
+    """Status, body and extra headers for a response; only /media/ answers byte ranges."""
+    if code != 200 or not path.startswith("/media/"):
+        return code, data, {}
+    code, data, content_range = byte_range(data, headers.get("Range"))
+    return code, data, {"Accept-Ranges": "bytes", **({"Content-Range": content_range} if content_range else {})}
+
+
 class CtrlPanel:
     def __init__(self, data_dir, server_dir, rerun, quit_app=lambda: None, set_muted=None, set_stealth=None):
         """rerun(text) -> bool: replays `text` as a fresh voice turn (so the usual spoken confirmation applies)."""
@@ -54,6 +76,9 @@ class CtrlPanel:
             return 200, "text/html", page().replace(b"__TOKEN__", self.token.encode())
         if query.get("t") != self.token:
             return 403, "application/json", b'{"error":"forbidden"}'
+        if path.startswith("/media/") and method == "GET":
+            found = be.media(self.data_dir, path[len("/media/"):])
+            return (200, found[1], found[0]) if found else (404, "application/json", b'{"error":"no such file"}')
         try:
             if path == "/api/transcribe" and method == "POST":
                 try:
@@ -209,9 +234,12 @@ class CtrlPanel:
                     except ValueError:
                         body = {}
                 code, ctype, data = panel.handle(method, u.path, q, body)
+                code, data, extra = _media_range(u.path, self.headers, code, data)
                 self.send_response(code)
                 self.send_header("Content-Type", ctype + "; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
+                for k, v in extra.items():
+                    self.send_header(k, v)
                 self.end_headers()
                 self.wfile.write(data)
 
@@ -380,6 +408,8 @@ class CtrlPanel:
                     except ValueError:
                         body = {}
                 code, ctype, data, extra = panel.handle_remote(method, u.path, q, self.headers, body)
+                code, data, more = _media_range(u.path, self.headers, code, data)
+                extra = {**extra, **more}
                 self.send_response(code)
                 self.send_header("Content-Type", ctype + "; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
