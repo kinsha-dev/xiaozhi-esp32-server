@@ -41,12 +41,10 @@ def test_siri_without_the_voice_box_module_is_an_error(tmp_path):
         be.siri_chat(tmp_path / "no" / "data", "hi")
 
 
-def test_chat_tab_has_siri_mode_and_the_button():
+def test_siri_is_picked_in_the_menu_and_sent_with_send():
     html = UI.read_text()
     assert '{label:"Siri",value:"siri"}' in html
-    assert "Send to Siri" in html
-    assert 'name:"send_siri"' in html
-
+    assert "siriBtn" not in html and "send_siri" not in html
 
 def test_risky_siri_text_waits_for_the_confirm(tmp_path):
     data = _box(tmp_path)
