@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 
 from mac_app import ctrl_backend as be
-from mac_app import ctrl_search
 
 
 def _entry(kind, id_, ts, source, body, status, item=None):
@@ -42,6 +41,7 @@ def add_note(data_dir: Path, text: str) -> dict:
     row = {"id": uuid.uuid4().hex[:8], "ts": datetime.now().strftime("%Y-%m-%d %H:%M"), "tag": "", "text": text}
     d = Path(data_dir)
     d.mkdir(parents=True, exist_ok=True)
+    from mac_app import ctrl_search  # ctrl_search imports this module
     with ctrl_search._notes_lock(d), open(d / "notes.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
     return row

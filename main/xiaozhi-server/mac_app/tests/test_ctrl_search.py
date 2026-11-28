@@ -84,3 +84,17 @@ def test_panel_routes_need_the_token(data):
     assert code == 200 and json.loads(body)["results"][0]["id"] == "n1"
     edit = {"kind": "note", "id": "n1", "text": "x", "old": "stale"}
     assert panel.handle("POST", "/api/edit", {"t": panel.token}, edit)[0] == 400
+
+
+def test_results_carry_the_chat_entry_to_draw(data):
+    found = se.search(data, "milk")["results"]
+    assert [h["row"]["id"] for h in found if h["id"] in ("t1", "n1", "c1")] == ["todo-t1", "note-n1", "c1"]
+    todo = found[0]["row"]
+    assert todo["item"]["kind"] == "todo" and todo["category"] == "Todo"
+
+
+def test_results_are_shown_in_the_chat_feed():
+    from mac_app.ctrl import UI
+
+    html = UI.read_text()
+    assert "chatMessagesUpdate(rows.reverse())" in html and "sres" not in html
